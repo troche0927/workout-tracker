@@ -1,0 +1,1854 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Apex Strong - Workout Tracker</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            gymDark: '#0b0f17',
+            gymCard: '#131b26',
+            gymBorder: '#1f2d3d',
+            primaryBlue: '#3b82f6',
+            neonCyan: '#06b6d4'
+          }
+        }
+      }
+    }
+  </script>
+  
+  <!-- Chart.js for Progression Timelines -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Phosphor Icons -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <!-- Tone.js for Rest Timer chimes -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+  <style>
+    body {
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    input, textarea {
+      user-select: auto;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.05); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .timer-active {
+      animation: pulse-ring 2s infinite ease-in-out;
+    }
+  </style>
+</head>
+
+<body class="bg-gymDark text-slate-100 min-h-screen flex justify-center selection:bg-blue-500 selection:text-white">
+  <div class="w-full max-w-md bg-[#0e141f] min-h-screen flex flex-col relative border-x border-gymBorder shadow-2xl pb-24 overflow-x-hidden">
+    
+    <!-- Top Header Bar -->
+    <header class="sticky top-0 z-40 bg-[#0e141f]/95 backdrop-blur border-b border-gymBorder px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-500 to-cyan-400 flex items-center justify-center font-black text-black text-lg">
+          <i class="ph-bold ph-barbell"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-1.5">
+            APEX <span class="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-semibold uppercase tracking-wider">Strong</span>
+          </h1>
+        </div>
+      </div>
+
+      <div id="headerTimerBadge" onclick="showRestTimerModal()" class="hidden items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-950/80 border border-blue-500/40 text-blue-400 text-xs font-mono font-bold cursor-pointer">
+        <i class="ph-bold ph-timer animate-spin"></i>
+        <span id="headerTimerText">01:30</span>
+      </div>
+
+      <button onclick="toggleSettingsModal()" class="p-2 text-slate-400 hover:text-white transition-colors" title="Settings & Data">
+        <i class="ph ph-gear text-xl"></i>
+      </button>
+    </header>
+
+    <!-- Floating Global Message Banner -->
+    <div id="appToast" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 transform -translate-y-10 opacity-0 pointer-events-none max-w-xs w-full px-4">
+      <div id="appToastContent" class="bg-slate-800 border border-blue-500 text-blue-200 px-4 py-2.5 rounded-xl shadow-xl text-xs font-medium flex items-center gap-2">
+        <i class="ph-bold ph-check-circle text-blue-400 text-base"></i>
+        <span id="appToastMessage">Notification</span>
+      </div>
+    </div>
+
+    <!-- Active Workout Drawer Alert -->
+    <div id="activeWorkoutBanner" class="hidden bg-gradient-to-r from-blue-600 to-teal-600 px-4 py-2.5 flex items-center justify-between text-white text-xs font-semibold cursor-pointer shadow-lg sticky top-[57px] z-30" onclick="openActiveWorkoutView()">
+      <div class="flex items-center gap-2">
+        <span class="relative flex h-2.5 w-2.5">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+        </span>
+        <span id="bannerWorkoutTitle">Workout in progress...</span>
+      </div>
+      <div class="flex items-center gap-1">
+        <span id="bannerWorkoutTimer" class="font-mono">00:00</span>
+        <i class="ph-bold ph-caret-right"></i>
+      </div>
+    </div>
+
+    <!-- ================= MAIN VIEW CONTAINER ================= -->
+    <main class="flex-1 px-4 py-4 overflow-y-auto no-scrollbar">
+      <!-- VIEW 1: WORKOUTS & TEMPLATES -->
+      <section id="view-workouts" class="space-y-5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Quick Start</h2>
+          <button onclick="startEmptyWorkout()" class="text-xs text-blue-400 font-semibold hover:underline flex items-center gap-1">
+            <i class="ph-bold ph-plus"></i> Blank Workout
+          </button>
+        </div>
+
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">My Templates</h2>
+            <button onclick="openCreateTemplateModal()" class="text-xs text-blue-400 font-semibold hover:text-blue-300 flex items-center gap-1">
+              <i class="ph-bold ph-plus-circle text-sm"></i> New Template
+            </button>
+          </div>
+          <div id="templatesList" class="space-y-3"></div>
+        </div>
+      </section>
+
+      <!-- VIEW 2: PROGRESSION TIMELINES & CHARTS -->
+      <section id="view-progress" class="hidden space-y-4">
+        
+        <!-- Progress Mode Toggle -->
+        <div class="flex items-center gap-2 bg-gymCard p-1 rounded-xl border border-gymBorder shadow-inner">
+          <button id="btnProgModeExercise" onclick="setProgressMode('exercise')" class="flex-1 py-1.5 text-[11px] rounded-lg bg-blue-500/20 text-blue-400 font-bold border border-blue-500/30 transition-colors">By Exercise</button>
+          <button id="btnProgModeMuscle" onclick="setProgressMode('muscle')" class="flex-1 py-1.5 text-[11px] rounded-lg text-slate-400 hover:text-white border border-transparent transition-colors">By Muscle Area</button>
+        </div>
+
+        <div class="bg-gymCard p-3 rounded-xl border border-gymBorder">
+          <label id="lblProgressSelect" class="text-[11px] font-semibold uppercase text-slate-400 block mb-1.5">Select Exercise</label>
+          <select id="exerciseProgressSelect" onchange="renderExerciseTimeline()" class="w-full bg-[#0a0f16] border border-gymBorder text-white text-sm rounded-lg p-2.5 outline-none focus:border-blue-500"></select>
+        </div>
+
+        <div id="metricStatusCard" class="bg-gymCard p-4 rounded-xl border border-gymBorder grid grid-cols-3 gap-2 text-center">
+          <div>
+            <p id="lblMetricBest" class="text-[10px] uppercase font-semibold text-slate-400">Current Best</p>
+            <p id="metricCurrentBest" class="text-base font-bold text-white mt-0.5">--</p>
+          </div>
+          <div class="border-x border-gymBorder">
+            <p id="lblMetricEst1RM" class="text-[10px] uppercase font-semibold text-slate-400">Est. 1RM</p>
+            <p id="metricEst1RM" class="text-base font-bold text-blue-400 mt-0.5">--</p>
+          </div>
+          <div>
+            <p class="text-[10px] uppercase font-semibold text-slate-400">Trend Status</p>
+            <span id="metricTrendBadge" class="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full mt-1 bg-slate-800 text-slate-300">
+              Analyzing...
+            </span>
+          </div>
+        </div>
+
+        <div class="bg-gymCard p-4 rounded-2xl border border-gymBorder shadow-inner">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <i class="ph-bold ph-chart-line text-blue-400"></i> Timeline
+            </h3>
+            <div id="chartModeToggleGroup" class="flex bg-[#0a0f16] rounded-lg p-0.5 border border-gymBorder text-[11px]">
+              <button id="chartModeWeight" onclick="switchChartMetric('weight')" class="px-2.5 py-0.5 rounded-md bg-blue-500/20 text-blue-400 font-semibold">Weight</button>
+              <button id="chartModeVolume" onclick="switchChartMetric('volume')" class="px-2.5 py-0.5 rounded-md text-slate-400 hover:text-white">Volume</button>
+            </div>
+          </div>
+          <div class="relative h-60 w-full">
+            <canvas id="progressionChart"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-gymCard p-4 rounded-xl border border-gymBorder">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Historical Sessions</h3>
+          <div id="exerciseSessionHistory" class="space-y-2 max-h-56 overflow-y-auto pr-1 text-xs"></div>
+        </div>
+      </section>
+
+      <!-- VIEW 3: WORKOUT HISTORY -->
+      <section id="view-history" class="hidden space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold text-white">Workout Logs</h2>
+            <p class="text-xs text-slate-400">Past completed sessions</p>
+          </div>
+          <span id="historySessionCount" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 text-blue-400 font-mono font-semibold">0 Workouts</span>
+        </div>
+        <div id="historyList" class="space-y-3"></div>
+      </section>
+    </main>
+
+    <!-- ================= ACTIVE WORKOUT FULLSCREEN MODAL ================= -->
+    <div id="activeWorkoutModal" class="fixed inset-0 z-50 bg-[#0b0f17] flex flex-col hidden overflow-hidden">
+      <div class="px-4 py-3 border-b border-gymBorder bg-[#131b26] flex items-center justify-between">
+        <button onclick="minimizeActiveWorkout()" class="p-2 text-slate-400 hover:text-white" title="Minimize">
+          <i class="ph-bold ph-caret-down text-lg"></i>
+        </button>
+        <div class="text-center">
+          <input id="activeWorkoutNameInput" class="text-sm font-bold bg-transparent text-center text-white border-b border-transparent hover:border-slate-600 focus:border-blue-400 outline-none px-2" value="Push Hypertrophy" />
+          <p id="activeWorkoutElapsedTime" class="text-xs font-mono text-blue-400">00:00:00</p>
+        </div>
+        <button onclick="finishCurrentWorkout()" class="bg-blue-500 hover:bg-blue-400 text-black px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider">
+          Finish
+        </button>
+      </div>
+
+      <!-- Free-Form Manual Rest Quick Bar -->
+      <div class="bg-[#0a0f16] px-4 py-2 border-b border-gymBorder flex items-center justify-between text-xs">
+        <span class="text-slate-400 flex items-center gap-1">
+          <i class="ph-bold ph-timer text-blue-400"></i> Free-Form Rest:
+        </span>
+        <div class="flex items-center gap-1.5 font-mono">
+          <input type="number" id="quickRestInput" value="90" class="w-12 bg-slate-800 text-center text-xs py-0.5 rounded border border-gymBorder text-white outline-none focus:border-blue-500">
+          <span class="text-[10px] text-slate-400">s</span>
+          <button onclick="startRestTimer(document.getElementById('quickRestInput').value)" class="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/40 hover:bg-blue-500/30">Start</button>
+          <button onclick="stopRestTimer()" class="px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30">Stop</button>
+          <span id="activeTimerCountdown" class="text-blue-400 font-bold ml-2">--:--</span>
+        </div>
+      </div>
+
+      <div id="activeExercisesContainer" class="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar"></div>
+
+      <div class="p-3 border-t border-gymBorder bg-[#131b26] flex gap-2">
+        <button onclick="openAddExerciseModal()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-400 font-bold text-xs flex items-center justify-center gap-1.5 border border-gymBorder">
+          <i class="ph-bold ph-plus"></i> Add Exercise
+        </button>
+        <button onclick="cancelCurrentWorkoutPrompt()" class="px-4 py-2.5 rounded-xl bg-red-950/40 text-red-400 border border-red-900/60 font-semibold text-xs hover:bg-red-900/40">
+          Discard
+        </button>
+      </div>
+    </div>
+
+    <!-- ================= REST TIMER POPUP MODAL ================= -->
+    <div id="restTimerModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
+      <div class="bg-gymCard border border-gymBorder w-full max-w-xs rounded-2xl p-5 text-center shadow-2xl space-y-4">
+        <h3 class="text-sm font-bold text-white uppercase tracking-wider">Resting Between Sets</h3>
+        <div class="relative py-4">
+          <span id="modalTimerDisplay" class="text-5xl font-mono font-black text-blue-400 tracking-wider">01:30</span>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <button onclick="addRestTimerSeconds(15)" class="py-2 bg-slate-800 rounded-lg text-xs font-semibold text-slate-200">+15s</button>
+          <button onclick="addRestTimerSeconds(30)" class="py-2 bg-slate-800 rounded-lg text-xs font-semibold text-slate-200">+30s</button>
+          <button onclick="stopRestTimer()" class="py-2 bg-red-900/40 text-red-300 border border-red-800/40 rounded-lg text-xs font-semibold">Skip</button>
+        </div>
+        <button onclick="hideRestTimerModal()" class="w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs text-slate-300">
+          Close Window
+        </button>
+      </div>
+    </div>
+
+    <!-- ================= ADD EXERCISE PICKER MODAL ================= -->
+    <div id="addExerciseModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-end sm:items-center justify-center">
+      <div class="bg-gymCard border-t sm:border border-gymBorder w-full max-w-md h-[80vh] rounded-t-3xl sm:rounded-2xl flex flex-col p-4">
+        <div class="flex items-center justify-between pb-3 border-b border-gymBorder">
+          <h3 class="text-sm font-bold text-white">Select Exercise</h3>
+          <button onclick="closeAddExerciseModal()" class="p-1 text-slate-400 hover:text-white">
+            <i class="ph-bold ph-x text-lg"></i>
+          </button>
+        </div>
+
+        <div class="py-3">
+          <input id="exerciseSearchInput" type="text" placeholder="Search 110+ exercises (e.g. Bench, Squat, Curls)..." oninput="filterExercisePicker()" class="w-full bg-[#0a0f16] border border-gymBorder text-white text-xs rounded-xl px-3 py-2.5 outline-none focus:border-blue-500" />
+        </div>
+
+        <div class="flex gap-1.5 overflow-x-auto pb-2 no-scrollbar text-[11px]">
+          <button onclick="filterExerciseCategory('All')" class="px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 font-semibold cat-filter-btn" data-cat="All">All</button>
+          <button onclick="filterExerciseCategory('Chest')" class="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-gymBorder cat-filter-btn" data-cat="Chest">Chest</button>
+          <button onclick="filterExerciseCategory('Back')" class="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-gymBorder cat-filter-btn" data-cat="Back">Back</button>
+          <button onclick="filterExerciseCategory('Shoulders')" class="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-gymBorder cat-filter-btn" data-cat="Shoulders">Shoulders</button>
+          <button onclick="filterExerciseCategory('Legs')" class="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-gymBorder cat-filter-btn" data-cat="Legs">Legs</button>
+          <button onclick="filterExerciseCategory('Glutes')" class="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-gymBorder cat-filter-btn" data-cat="Glutes">Glutes</button>
+          <button onclick="filterExerciseCategory('Calves')" class="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-gymBorder cat-filter-btn" data-cat="Calves">Calves</button>
+          <button onclick="filterExerciseCategory('Arms')" class="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-gymBorder cat-filter-btn" data-cat="Arms">Arms</button>
+          <button onclick="filterExerciseCategory('Core')" class="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-gymBorder cat-filter-btn" data-cat="Core">Core</button>
+        </div>
+
+        <div id="exercisePickerList" class="flex-1 overflow-y-auto divide-y divide-gymBorder/50 pr-1 text-xs"></div>
+
+        <div class="pt-3 border-t border-gymBorder">
+          <button onclick="openCreateCustomExercisePrompt()" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-blue-400 font-semibold text-xs rounded-xl flex items-center justify-center gap-1">
+            <i class="ph-bold ph-plus"></i> Create Custom Exercise
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= CREATE/EDIT TEMPLATE MODAL ================= -->
+    <div id="templateModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
+      <div class="bg-gymCard border border-gymBorder w-full max-w-sm rounded-2xl p-5 space-y-4">
+        <div class="flex items-center justify-between pb-2 border-b border-gymBorder">
+          <h3 id="templateModalTitle" class="text-sm font-bold text-white">Create Workout Template</h3>
+          <button onclick="closeTemplateModal()" class="p-1 text-slate-400 hover:text-white">
+            <i class="ph-bold ph-x text-lg"></i>
+          </button>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Template Name</label>
+            <input id="newTemplateName" type="text" placeholder="e.g., Push Hypertrophy A" class="w-full bg-[#0a0f16] border border-gymBorder text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-blue-500" />
+          </div>
+
+          <div>
+            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Select Exercises & Rest</label>
+            <div id="templateExerciseChecklist" class="max-h-56 overflow-y-auto space-y-1.5 p-2 bg-[#0a0f16] rounded-xl border border-gymBorder text-xs"></div>
+          </div>
+        </div>
+
+        <div class="flex gap-2 pt-2">
+          <button onclick="saveNewTemplate()" class="flex-1 py-2.5 bg-blue-500 hover:bg-blue-400 text-black font-bold text-xs rounded-xl">Save Template</button>
+          <button onclick="closeTemplateModal()" class="px-4 py-2.5 bg-slate-800 text-slate-300 text-xs rounded-xl">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= SETTINGS & DATA MODAL ================= -->
+    <div id="settingsModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
+      <div class="bg-gymCard border border-gymBorder w-full max-w-xs rounded-2xl p-5 space-y-4 text-xs">
+        <div class="flex items-center justify-between pb-2 border-b border-gymBorder">
+          <h3 class="text-sm font-bold text-white">Settings & Storage</h3>
+          <button onclick="toggleSettingsModal()" class="p-1 text-slate-400 hover:text-white">
+            <i class="ph-bold ph-x text-lg"></i>
+          </button>
+        </div>
+        <div class="space-y-2">
+          <p class="text-slate-400 text-[11px]">All workout logs and custom templates are stored locally in your device's browser memory.</p>
+          <div class="p-3 bg-slate-900/80 rounded-xl border border-gymBorder space-y-1">
+            <span class="text-blue-400 font-semibold block">Mobile Installation Tip:</span>
+            <span class="text-slate-300 text-[11px]">Tap the "Share" button in Safari or the menu in Chrome, then select <strong>"Add to Home Screen"</strong> for full-screen native gym use.</span>
+          </div>
+        </div>
+        <div class="space-y-2 pt-2">
+          <button onclick="seedSampleDataPrompt()" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl border border-gymBorder">
+            Reload 4-Week Sample Workouts
+          </button>
+          <button onclick="clearAllWorkoutDataPrompt()" class="w-full py-2 bg-red-950/40 text-red-400 border border-red-900/60 font-semibold rounded-xl">
+            Clear All Workout Data
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= BOTTOM NAVIGATION BAR ================= -->
+    <nav class="fixed bottom-0 max-w-md w-full bg-[#0d131d]/95 backdrop-blur border-t border-gymBorder px-2 py-2 flex items-center justify-around z-40">
+      <button onclick="switchTab('workouts')" id="nav-workouts" class="nav-btn flex flex-col items-center justify-center py-1 px-3 rounded-xl text-blue-400 transition-colors">
+        <i class="ph-bold ph-barbell text-xl"></i>
+        <span class="text-[10px] font-bold mt-0.5">Workout</span>
+      </button>
+
+      <button onclick="switchTab('progress')" id="nav-progress" class="nav-btn flex flex-col items-center justify-center py-1 px-3 rounded-xl text-slate-400 hover:text-slate-200 transition-colors">
+        <i class="ph-bold ph-chart-line-up text-xl"></i>
+        <span class="text-[10px] font-medium mt-0.5">Progress</span>
+      </button>
+
+      <button onclick="switchTab('history')" id="nav-history" class="nav-btn flex flex-col items-center justify-center py-1 px-3 rounded-xl text-slate-400 hover:text-slate-200 transition-colors">
+        <i class="ph-bold ph-clock-counter-clockwise text-xl"></i>
+        <span class="text-[10px] font-medium mt-0.5">History</span>
+      </button>
+    </nav>
+  </div>
+
+<script>
+/* =========================================================================
+   STATE MANAGEMENT & STORAGE KEYS
+   ========================================================================= */
+const STORAGE_KEYS = {
+  TEMPLATES: 'apex_templates_v2',
+  HISTORY: 'apex_history_v2',
+  EXERCISES: 'apex_exercises_v3',
+  ACTIVE: 'apex_active_workout_v2'
+};
+
+const DEFAULT_EXERCISES = [
+  // Chest
+  { id: 'ex_bb_bench', name: 'Barbell Bench Press', category: 'Chest' },
+  { id: 'ex_inc_bb_bench', name: 'Incline Barbell Bench Press', category: 'Chest' },
+  { id: 'ex_dec_bb_bench', name: 'Decline Barbell Bench Press', category: 'Chest' },
+  { id: 'ex_db_bench', name: 'Dumbbell Bench Press', category: 'Chest' },
+  { id: 'ex_inc_db_bench', name: 'Incline Dumbbell Press', category: 'Chest' },
+  { id: 'ex_dec_db_bench', name: 'Decline Dumbbell Press', category: 'Chest' },
+  { id: 'ex_std_pushups', name: 'Standard Push-Ups', category: 'Chest' },
+  { id: 'ex_def_pushups', name: 'Deficit Push-Ups', category: 'Chest' },
+  { id: 'ex_diam_pushups', name: 'Diamond Push-Ups', category: 'Chest' },
+  { id: 'ex_inc_dec_pushups', name: 'Incline / Decline Push-Ups', category: 'Chest' },
+  { id: 'ex_par_dips', name: 'Parallel Bar Dips', category: 'Chest' },
+  { id: 'ex_cable_fly_hi_lo', name: 'Cable Chest Flyes High to Low', category: 'Chest' },
+  { id: 'ex_cable_fly_lo_hi', name: 'Cable Chest Flyes Low to High', category: 'Chest' },
+  { id: 'ex_chest_press_mach', name: 'Chest Press Machine', category: 'Chest' },
+
+  // Shoulders
+  { id: 'ex_bb_ohp', name: 'Barbell Overhead Press (Military Press)', category: 'Shoulders' },
+  { id: 'ex_db_ohp', name: 'Dumbbell Shoulder Press', category: 'Shoulders' },
+  { id: 'ex_arnold_press', name: 'Arnold Press', category: 'Shoulders' },
+  { id: 'ex_push_press', name: 'Push Press', category: 'Shoulders' },
+  { id: 'ex_landmine_press', name: 'Landmine Press', category: 'Shoulders' },
+  { id: 'ex_pike_pushups', name: 'Pike Push-Ups', category: 'Shoulders' },
+  { id: 'ex_hspu', name: 'Handstand Push-Ups', category: 'Shoulders' },
+  { id: 'ex_mach_ohp', name: 'Machine Overhead Press', category: 'Shoulders' },
+  { id: 'ex_db_lat_raise', name: 'Dumbbell Lateral Raises', category: 'Shoulders' },
+  { id: 'ex_cable_lat_raise', name: 'Cable Lateral Raises', category: 'Shoulders' },
+  { id: 'ex_mach_rear_delt', name: 'Machine Rear Delt Flyes', category: 'Shoulders' },
+  { id: 'ex_cable_rear_delt', name: 'Cable Rear Delt Flyes', category: 'Shoulders' },
+  { id: 'ex_db_front_raise', name: 'Dumbbell Front Raises', category: 'Shoulders' },
+  { id: 'ex_upright_row', name: 'Upright Rows', category: 'Shoulders' },
+  { id: 'ex_face_pull', name: 'Face Pulls', category: 'Shoulders' },
+
+  // Back
+  { id: 'ex_pullup_oh', name: 'Pull-Ups (Overhand)', category: 'Back' },
+  { id: 'ex_chinup_uh', name: 'Chin-Ups (Underhand)', category: 'Back' },
+  { id: 'ex_pullup_neutral', name: 'Neutral-Grip Pull-Ups', category: 'Back' },
+  { id: 'ex_lat_pulldown_wide', name: 'Wide Grip Lat Pulldowns', category: 'Back' },
+  { id: 'ex_lat_pulldown_close', name: 'Close Grip Lat Pulldowns', category: 'Back' },
+  { id: 'ex_lat_pulldown_neutral', name: 'Neutral Grip Lat Pulldowns', category: 'Back' },
+  { id: 'ex_straight_arm_pulldown', name: 'Straight-Arm Pulldowns', category: 'Back' },
+  { id: 'ex_muscle_ups', name: 'Muscle-Ups', category: 'Back' },
+  { id: 'ex_bb_bent_row', name: 'Barbell Bent-Over Rows', category: 'Back' },
+  { id: 'ex_pendlay_row', name: 'Pendlay Rows', category: 'Back' },
+  { id: 'ex_sa_db_row', name: 'Single-Arm Dumbbell Rows', category: 'Back' },
+  { id: 'ex_seated_cable_row', name: 'Seated Cable Rows', category: 'Back' },
+  { id: 'ex_tbar_row', name: 'T-Bar Rows', category: 'Back' },
+  { id: 'ex_inv_rows', name: 'Inverted Rows (Bodyweight)', category: 'Back' },
+  { id: 'ex_chest_supp_row', name: 'Chest-Supported Dumbbell Rows', category: 'Back' },
+  { id: 'ex_meadow_row', name: 'Meadow Rows', category: 'Back' },
+
+  // Legs
+  { id: 'ex_squat_bb', name: 'Barbell Back Squat (High Bar / Low Bar)', category: 'Legs' },
+  { id: 'ex_front_squat_bb', name: 'Barbell Front Squat', category: 'Legs' },
+  { id: 'ex_goblet_squat', name: 'Goblet Squat', category: 'Legs' },
+  { id: 'ex_zercher_squat', name: 'Zercher Squat', category: 'Legs' },
+  { id: 'ex_hack_squat', name: 'Hack Squat (Barbell / Machine)', category: 'Legs' },
+  { id: 'ex_box_squat', name: 'Box Squat', category: 'Legs' },
+  { id: 'ex_bss', name: 'Bulgarian Split Squat', category: 'Legs' },
+  { id: 'ex_pistol_squat', name: 'Pistol Squat (Single-Leg Squat)', category: 'Legs' },
+  { id: 'ex_sissy_squat', name: 'Sissy Squat', category: 'Legs' },
+  { id: 'ex_leg_press', name: 'Leg Press', category: 'Legs' },
+  { id: 'ex_fwd_lunges', name: 'Forward Lunges', category: 'Legs' },
+  { id: 'ex_rev_lunges', name: 'Reverse Lunges', category: 'Legs' },
+  { id: 'ex_walk_lunges', name: 'Walking Lunges', category: 'Legs' },
+  { id: 'ex_lat_lunges', name: 'Lateral Lunges', category: 'Legs' },
+  { id: 'ex_curtsy_lunges', name: 'Curtsy Lunges', category: 'Legs' },
+  { id: 'ex_step_ups', name: 'Step-Ups (Dumbbell / Barbell)', category: 'Legs' },
+  { id: 'ex_lying_leg_curls', name: 'Lying Leg Curls', category: 'Legs' },
+  { id: 'ex_seated_leg_curls', name: 'Seated Leg Curls', category: 'Legs' },
+  { id: 'ex_nordic_curls', name: 'Nordic Hamstring Curls', category: 'Legs' },
+  { id: 'ex_swiss_ham_curls', name: 'Swiss Ball Hamstring Curls', category: 'Legs' },
+  { id: 'ex_leg_ext', name: 'Machine Leg Extensions', category: 'Legs' },
+  
+  // Glutes (New Request)
+  { id: 'ex_conv_deadlift', name: 'Conventional Barbell Deadlift', category: 'Glutes' },
+  { id: 'ex_sumo_deadlift', name: 'Sumo Deadlift', category: 'Glutes' },
+  { id: 'ex_db_rdl', name: 'Dumbell Romanian Deadlift', category: 'Glutes' },
+  { id: 'ex_bb_rdl', name: 'Barbell Romanian Deadlift', category: 'Glutes' },
+  { id: 'ex_stiff_deadlift', name: 'Stiff-Legged Deadlift', category: 'Glutes' },
+  { id: 'ex_trap_deadlift', name: 'Trap Bar (Hex Bar) Deadlift', category: 'Glutes' },
+  { id: 'ex_deficit_deadlift', name: 'Deficit Deadlift', category: 'Glutes' },
+  { id: 'ex_hip_thrust', name: 'Barbell Hip Thrusts', category: 'Glutes' },
+  { id: 'ex_glute_bridges', name: 'Glute Bridges', category: 'Glutes' },
+  { id: 'ex_kb_swings', name: 'Kettlebell Swings', category: 'Glutes' },
+  { id: 'ex_good_mornings', name: 'Good Mornings', category: 'Glutes' },
+  { id: 'ex_back_ext', name: 'Back Extensions (Hyperextensions)', category: 'Glutes' },
+
+  // Calves (New Request)
+  { id: 'ex_standing_calf_raise', name: 'Standing Calf Raises', category: 'Calves' },
+  { id: 'ex_seated_calf_raise', name: 'Seated Calf Raises', category: 'Calves' },
+  { id: 'ex_donkey_calf_raise', name: 'Donkey Calf Raises', category: 'Calves' },
+
+  // Arms
+  { id: 'ex_bb_curl', name: 'Barbell Biceps Curls', category: 'Arms' },
+  { id: 'ex_db_hammer_curl', name: 'Dumbell Hammer Curls', category: 'Arms' },
+  { id: 'ex_inc_db_curl', name: 'Incline Dumbbell Curls', category: 'Arms' },
+  { id: 'ex_preacher_curl', name: 'Preacher Curls', category: 'Arms' },
+  { id: 'ex_conc_curl', name: 'Concentration Curls', category: 'Arms' },
+  { id: 'ex_cable_curl', name: 'Cable Curls', category: 'Arms' },
+  { id: 'ex_bayesian_curl', name: 'Bayesian Cable Curls', category: 'Arms' },
+  { id: 'ex_reverse_curl', name: 'Reverse Curls (Forearms)', category: 'Arms' },
+  { id: 'ex_wrist_curl', name: 'Wrist Curls / Extension Curls', category: 'Arms' },
+  { id: 'ex_skullcrushers', name: 'Skullcrushers (Lying Triceps Extensions)', category: 'Arms' },
+  { id: 'ex_cable_oh_tricep', name: 'Cable Overhead Tricep Extension', category: 'Arms' },
+  { id: 'ex_cable_rope_pushdown', name: 'Cable Triceps Rope Pushdowns', category: 'Arms' },
+  { id: 'ex_oh_db_tricep', name: 'Overhead Dumbbell Triceps Extensions', category: 'Arms' },
+  { id: 'ex_cg_bench', name: 'Close-Grip Barbell Bench Press', category: 'Arms' },
+  { id: 'ex_bench_dips', name: 'Parallel Bar / Bench Dips', category: 'Arms' },
+  { id: 'ex_db_kickback', name: 'Dumbbell Kickbacks', category: 'Arms' },
+
+  // Core
+  { id: 'ex_plank', name: 'Standard Planks', category: 'Core' },
+  { id: 'ex_side_plank', name: 'Side Planks', category: 'Core' },
+  { id: 'ex_ab_wheel', name: 'Ab Wheel Rollouts', category: 'Core' },
+  { id: 'ex_hanging_leg_raise', name: 'Hanging Leg Raises', category: 'Core' },
+  { id: 'ex_capt_chair_raise', name: "Captain's Chair Leg Raises", category: 'Core' },
+  { id: 'ex_crunches', name: 'Crunches', category: 'Core' },
+  { id: 'ex_bicycle_crunches', name: 'Bicycle Crunches', category: 'Core' },
+  { id: 'ex_reverse_crunches', name: 'Reverse Crunches', category: 'Core' },
+  { id: 'ex_situps', name: 'Sit-Ups', category: 'Core' },
+  { id: 'ex_hollow_body', name: 'Hollow Body Hold', category: 'Core' },
+  { id: 'ex_pallof_press', name: 'Pallof Press', category: 'Core' },
+  { id: 'ex_russian_twist', name: 'Russian Twists', category: 'Core' },
+  { id: 'ex_woodchopper', name: 'Woodchoppers (Cable / Dumbbell)', category: 'Core' },
+  { id: 'ex_birddogs', name: 'Bird-Dogs', category: 'Core' },
+  { id: 'ex_deadbugs', name: 'Deadbugs', category: 'Core' },
+
+  // Conditioning & Olympic
+  { id: 'ex_clean_jerk', name: 'Clean and Jerk', category: 'Conditioning' },
+  { id: 'ex_snatch', name: 'Snatch', category: 'Conditioning' },
+  { id: 'ex_power_clean', name: 'Power Clean', category: 'Conditioning' },
+  { id: 'ex_hang_clean', name: 'Hang Clean', category: 'Conditioning' },
+  { id: 'ex_push_jerk', name: 'Push Jerk', category: 'Conditioning' },
+  { id: 'ex_burpees', name: 'Burpees', category: 'Conditioning' },
+  { id: 'ex_mountain_climber', name: 'Mountain Climbers', category: 'Conditioning' },
+  { id: 'ex_jumping_jacks', name: 'Jumping Jacks', category: 'Conditioning' },
+  { id: 'ex_box_jumps', name: 'Box Jumps', category: 'Conditioning' },
+  { id: 'ex_broad_jumps', name: 'Broad Jumps', category: 'Conditioning' },
+  { id: 'ex_kb_snatch', name: 'Kettlebell Snatch', category: 'Conditioning' },
+  { id: 'ex_wall_balls', name: 'Wall Balls', category: 'Conditioning' },
+  { id: 'ex_farmers_carry', name: "Farmer's Carries / Suitcase Carries", category: 'Conditioning' },
+  { id: 'ex_sled_push', name: 'Sled Push / Pull (Prowler)', category: 'Conditioning' },
+  { id: 'ex_battle_ropes', name: 'Battle Ropes', category: 'Conditioning' }
+];
+
+const DEFAULT_TEMPLATES = [
+  {
+    id: 'tmpl_push',
+    name: 'Push Hypertrophy',
+    color: '#3b82f6',
+    exercises: [
+      { exerciseId: 'ex_bb_bench', name: 'Barbell Bench Press', defaultSets: 3, restSeconds: 120 },
+      { exerciseId: 'ex_inc_db_bench', name: 'Incline Dumbbell Press', defaultSets: 3, restSeconds: 90 },
+      { exerciseId: 'ex_bb_ohp', name: 'Barbell Overhead Press (Military Press)', defaultSets: 3, restSeconds: 120 },
+      { exerciseId: 'ex_db_lat_raise', name: 'Dumbbell Lateral Raises', defaultSets: 3, restSeconds: 60 },
+      { exerciseId: 'ex_cable_rope_pushdown', name: 'Cable Triceps Rope Pushdowns', defaultSets: 3, restSeconds: 60 }
+    ]
+  },
+  {
+    id: 'tmpl_pull',
+    name: 'Pull Hypertrophy',
+    color: '#06b6d4',
+    exercises: [
+      { exerciseId: 'ex_pullup_oh', name: 'Pull-Ups (Overhand)', defaultSets: 3, restSeconds: 120 },
+      { exerciseId: 'ex_bb_bent_row', name: 'Barbell Bent-Over Rows', defaultSets: 3, restSeconds: 120 },
+      { exerciseId: 'ex_lat_pulldown_wide', name: 'Wide Grip Lat Pulldowns', defaultSets: 3, restSeconds: 90 },
+      { exerciseId: 'ex_face_pull', name: 'Face Pulls', defaultSets: 3, restSeconds: 60 },
+      { exerciseId: 'ex_bb_curl', name: 'Barbell Biceps Curls', defaultSets: 3, restSeconds: 60 }
+    ]
+  },
+  {
+    id: 'tmpl_legs',
+    name: 'Legs & Lower',
+    color: '#f59e0b',
+    exercises: [
+      { exerciseId: 'ex_squat_bb', name: 'Barbell Back Squat (High Bar / Low Bar)', defaultSets: 4, restSeconds: 180 },
+      { exerciseId: 'ex_bb_rdl', name: 'Barbell Romanian Deadlift', defaultSets: 3, restSeconds: 120 },
+      { exerciseId: 'ex_leg_press', name: 'Leg Press', defaultSets: 3, restSeconds: 90 },
+      { exerciseId: 'ex_standing_calf_raise', name: 'Standing Calf Raises', defaultSets: 3, restSeconds: 60 }
+    ]
+  }
+];
+
+let appTemplates = [];
+let appHistory = [];
+let appExercises = [];
+let activeWorkout = null;
+let workoutIntervalId = null;
+let restTimerSecondsRemaining = 0;
+let restTimerIntervalId = null;
+
+// Progress Tracking States
+let progressMode = 'exercise'; // 'exercise' or 'muscle'
+let progressionChartInstance = null;
+let currentChartMetric = 'weight'; 
+let selectedExerciseCategory = 'All';
+
+/* =========================================================================
+   BOOTSTRAP & LOCAL STORAGE INITIALIZATION
+   ========================================================================= */
+window.addEventListener('DOMContentLoaded', () => {
+  initStorage();
+  renderTemplatesList();
+  renderHistoryList();
+  setupExerciseSelectors();
+  restoreActiveWorkoutIfExists();
+});
+
+function initStorage() {
+  const storedTemplates = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
+  const storedExercises = localStorage.getItem(STORAGE_KEYS.EXERCISES);
+  const storedHistory = localStorage.getItem(STORAGE_KEYS.HISTORY);
+
+  appTemplates = storedTemplates ? JSON.parse(storedTemplates) : DEFAULT_TEMPLATES;
+  
+  if (storedExercises) {
+    const parsed = JSON.parse(storedExercises);
+    const existingNames = new Set(parsed.map(e => e.name));
+    DEFAULT_EXERCISES.forEach(def => {
+      if (!existingNames.has(def.name)) parsed.push(def);
+    });
+    appExercises = parsed;
+  } else {
+    appExercises = DEFAULT_EXERCISES;
+  }
+
+  if (storedHistory) {
+    appHistory = JSON.parse(storedHistory);
+  } else {
+    appHistory = generateRealisticMockHistory();
+    saveHistoryToStorage();
+  }
+
+  saveTemplatesToStorage();
+  saveExercisesToStorage();
+}
+
+function saveTemplatesToStorage() {
+  localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(appTemplates));
+}
+function saveHistoryToStorage() {
+  localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(appHistory));
+}
+function saveExercisesToStorage() {
+  localStorage.setItem(STORAGE_KEYS.EXERCISES, JSON.stringify(appExercises));
+}
+
+function generateRealisticMockHistory() {
+  const history = [];
+  const baseDate = new Date();
+  
+  const sampleSessions = [
+    {
+      daysAgo: 32,
+      name: 'Push Hypertrophy',
+      exercises: [
+        { name: 'Barbell Bench Press', sets: [{ weight: 195, reps: 6 }, { weight: 195, reps: 6 }, { weight: 195, reps: 5 }] },
+        { name: 'Barbell Overhead Press (Military Press)', sets: [{ weight: 115, reps: 8 }, { weight: 115, reps: 8 }, { weight: 115, reps: 7 }] },
+        { name: 'Incline Dumbbell Press', sets: [{ weight: 60, reps: 10 }, { weight: 60, reps: 10 }] }
+      ]
+    },
+    {
+      daysAgo: 29,
+      name: 'Legs & Lower',
+      exercises: [
+        { name: 'Barbell Back Squat (High Bar / Low Bar)', sets: [{ weight: 225, reps: 6 }, { weight: 225, reps: 6 }, { weight: 225, reps: 6 }] },
+        { name: 'Barbell Romanian Deadlift', sets: [{ weight: 205, reps: 8 }, { weight: 205, reps: 8 }] }
+      ]
+    },
+    {
+      daysAgo: 25,
+      name: 'Push Hypertrophy',
+      exercises: [
+        { name: 'Barbell Bench Press', sets: [{ weight: 200, reps: 6 }, { weight: 200, reps: 5 }, { weight: 200, reps: 5 }] },
+        { name: 'Barbell Overhead Press (Military Press)', sets: [{ weight: 120, reps: 8 }, { weight: 120, reps: 7 }] }
+      ]
+    },
+    {
+      daysAgo: 21,
+      name: 'Legs & Lower',
+      exercises: [
+        { name: 'Barbell Back Squat (High Bar / Low Bar)', sets: [{ weight: 235, reps: 5 }, { weight: 235, reps: 5 }, { weight: 235, reps: 5 }] },
+        { name: 'Barbell Romanian Deadlift', sets: [{ weight: 215, reps: 8 }, { weight: 215, reps: 8 }] }
+      ]
+    },
+    {
+      daysAgo: 18,
+      name: 'Push Hypertrophy',
+      exercises: [
+        { name: 'Barbell Bench Press', sets: [{ weight: 205, reps: 5 }, { weight: 205, reps: 4 }, { weight: 205, reps: 4 }] },
+        { name: 'Barbell Overhead Press (Military Press)', sets: [{ weight: 125, reps: 6 }, { weight: 125, reps: 5 }] }
+      ]
+    },
+    {
+      daysAgo: 14,
+      name: 'Legs & Lower',
+      exercises: [
+        { name: 'Barbell Back Squat (High Bar / Low Bar)', sets: [{ weight: 245, reps: 5 }, { weight: 245, reps: 5 }, { weight: 245, reps: 5 }] },
+        { name: 'Barbell Romanian Deadlift', sets: [{ weight: 225, reps: 8 }, { weight: 225, reps: 7 }] }
+      ]
+    },
+    {
+      daysAgo: 10,
+      name: 'Push Hypertrophy',
+      exercises: [
+        { name: 'Barbell Bench Press', sets: [{ weight: 205, reps: 5 }, { weight: 205, reps: 4 }, { weight: 205, reps: 3 }] },
+        { name: 'Barbell Overhead Press (Military Press)', sets: [{ weight: 120, reps: 6 }, { weight: 120, reps: 6 }] }
+      ]
+    },
+    {
+      daysAgo: 7,
+      name: 'Legs & Lower',
+      exercises: [
+        { name: 'Barbell Back Squat (High Bar / Low Bar)', sets: [{ weight: 255, reps: 5 }, { weight: 255, reps: 5 }, { weight: 255, reps: 4 }] },
+        { name: 'Barbell Romanian Deadlift', sets: [{ weight: 235, reps: 6 }, { weight: 235, reps: 6 }] }
+      ]
+    },
+    {
+      daysAgo: 3,
+      name: 'Push Hypertrophy',
+      exercises: [
+        { name: 'Barbell Bench Press', sets: [{ weight: 205, reps: 4 }, { weight: 205, reps: 4 }, { weight: 205, reps: 3 }] },
+        { name: 'Barbell Overhead Press (Military Press)', sets: [{ weight: 120, reps: 5 }, { weight: 120, reps: 5 }] },
+        { name: 'Incline Dumbbell Press', sets: [{ weight: 65, reps: 8 }, { weight: 65, reps: 8 }] }
+      ]
+    },
+    {
+      daysAgo: 1,
+      name: 'Legs & Lower',
+      exercises: [
+        { name: 'Barbell Back Squat (High Bar / Low Bar)', sets: [{ weight: 265, reps: 4 }, { weight: 265, reps: 4 }, { weight: 265, reps: 4 }] },
+        { name: 'Barbell Romanian Deadlift', sets: [{ weight: 245, reps: 5 }, { weight: 245, reps: 5 }] },
+        { name: 'Standing Calf Raises', sets: [{ weight: 110, reps: 15 }, { weight: 110, reps: 12 }] }
+      ]
+    }
+  ];
+
+  sampleSessions.forEach((s, idx) => {
+    const d = new Date(baseDate);
+    d.setDate(d.getDate() - s.daysAgo);
+    
+    let totalVol = 0;
+    const exercisesMapped = s.exercises.map(ex => {
+      const exerciseDef = DEFAULT_EXERCISES.find(e => e.name === ex.name) || { id: 'custom_' + idx, name: ex.name, category: 'All' };
+      const formattedSets = ex.sets.map((set, setIdx) => {
+        totalVol += (set.weight * set.reps);
+        return {
+          setNum: setIdx + 1,
+          weight: set.weight,
+          reps: set.reps,
+          completed: true
+        };
+      });
+      return {
+        exerciseId: exerciseDef.id,
+        name: ex.name,
+        sets: formattedSets
+      };
+    });
+
+    history.push({
+      id: 'mock_session_' + idx,
+      name: s.name,
+      timestamp: d.toISOString(),
+      durationSeconds: 3200 + (idx * 140),
+      totalVolume: totalVol,
+      exercises: exercisesMapped
+    });
+  });
+
+  return history;
+}
+
+/* =========================================================================
+   NAVIGATION TABS
+   ========================================================================= */
+function switchTab(tabId) {
+  const views = ['workouts', 'progress', 'history'];
+  views.forEach(v => {
+    const el = document.getElementById(`view-${v}`);
+    const navBtn = document.getElementById(`nav-${v}`);
+    if (v === tabId) {
+      el.classList.remove('hidden');
+      navBtn.classList.remove('text-slate-400');
+      navBtn.classList.add('text-blue-400');
+    } else {
+      el.classList.add('hidden');
+      navBtn.classList.add('text-slate-400');
+      navBtn.classList.remove('text-blue-400');
+    }
+  });
+
+  if (tabId === 'progress') {
+    renderExerciseTimeline();
+  } else if (tabId === 'history') {
+    renderHistoryList();
+  }
+}
+
+/* =========================================================================
+   TEMPLATE RENDERING & MANAGEMENT
+   ========================================================================= */
+function renderTemplatesList() {
+  const container = document.getElementById('templatesList');
+  if (!container) return;
+
+  if (appTemplates.length === 0) {
+    container.innerHTML = `
+      <div class="p-4 rounded-xl border border-dashed border-gymBorder text-center text-xs text-slate-500">
+        No templates found. Create your first custom workout above!
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = appTemplates.map(t => {
+    const previewList = t.exercises.map(e => e.name).slice(0, 3).join(', ');
+    const extraCount = t.exercises.length > 3 ? ` +${t.exercises.length - 3} more` : '';
+    return `
+      <div class="bg-gymCard border border-gymBorder rounded-2xl p-4 shadow-sm hover:border-slate-600 transition-all flex flex-col justify-between space-y-3">
+        <div>
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-sm text-white">${escapeHtml(t.name)}</h3>
+            <div class="flex items-center gap-1">
+              <button onclick="deleteTemplate('${t.id}')" class="p-1.5 text-slate-500 hover:text-red-400 transition-colors" title="Delete Template">
+                <i class="ph ph-trash text-sm"></i>
+              </button>
+            </div>
+          </div>
+          <p class="text-xs text-slate-400 mt-1 line-clamp-1">${previewList}${extraCount}</p>
+        </div>
+
+        <button onclick="startWorkoutFromTemplate('${t.id}')" class="w-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors">
+          <i class="ph-bold ph-play"></i> Start Workout
+        </button>
+      </div>
+    `;
+  }).join('');
+}
+
+function openCreateTemplateModal() {
+  const checklist = document.getElementById('templateExerciseChecklist');
+  checklist.innerHTML = appExercises.map(e => `
+    <div class="flex flex-col gap-1 p-2 rounded-lg bg-[#0a0f16] border border-gymBorder mb-1">
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" value="${e.id}" data-name="${escapeHtml(e.name)}" class="tmpl-checkbox rounded border-gymBorder text-blue-500 focus:ring-0 bg-slate-900" onchange="document.getElementById('tmpl_details_${e.id}').classList.toggle('hidden', !this.checked)" />
+        <span class="text-slate-200 text-xs">${escapeHtml(e.name)}</span>
+        <span class="text-[10px] text-slate-500 ml-auto">(${e.category})</span>
+      </label>
+      <div id="tmpl_details_${e.id}" class="hidden flex gap-4 mt-1 pl-6">
+        <div class="flex items-center gap-1.5">
+          <span class="text-[10px] text-slate-400">Sets:</span>
+          <input type="number" id="tmpl_sets_${e.id}" value="3" min="1" class="w-10 bg-slate-800 border border-gymBorder text-white text-[11px] text-center rounded outline-none focus:border-blue-500">
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-[10px] text-slate-400">Rest (sec):</span>
+          <input type="number" id="tmpl_rest_${e.id}" value="90" min="0" step="5" class="w-12 bg-slate-800 border border-gymBorder text-white text-[11px] text-center rounded outline-none focus:border-blue-500">
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('newTemplateName').value = '';
+  document.getElementById('templateModal').classList.remove('hidden');
+}
+
+function closeTemplateModal() {
+  document.getElementById('templateModal').classList.add('hidden');
+}
+
+function saveNewTemplate() {
+  const nameInput = document.getElementById('newTemplateName');
+  const name = nameInput.value.trim();
+  if (!name) {
+    showToast('Please enter a template name');
+    return;
+  }
+
+  const exercises = [];
+  document.querySelectorAll('.tmpl-checkbox:checked').forEach(c => {
+    const id = c.value;
+    const exName = c.dataset.name;
+    const sets = parseInt(document.getElementById(`tmpl_sets_${id}`).value) || 3;
+    const rest = parseInt(document.getElementById(`tmpl_rest_${id}`).value) || 90;
+    
+    exercises.push({
+      exerciseId: id,
+      name: exName,
+      defaultSets: sets,
+      restSeconds: rest
+    });
+  });
+
+  if (exercises.length === 0) {
+    showToast('Select at least one exercise');
+    return;
+  }
+
+  const newTmpl = {
+    id: 'tmpl_' + Date.now(),
+    name: name,
+    color: '#3b82f6',
+    exercises: exercises
+  };
+
+  appTemplates.push(newTmpl);
+  saveTemplatesToStorage();
+  renderTemplatesList();
+  closeTemplateModal();
+  showToast(`Template "${name}" saved!`);
+}
+
+function deleteTemplate(templateId) {
+  appTemplates = appTemplates.filter(t => t.id !== templateId);
+  saveTemplatesToStorage();
+  renderTemplatesList();
+  showToast('Template removed');
+}
+
+/* =========================================================================
+   ACTIVE WORKOUT ENGINE
+   ========================================================================= */
+function startWorkoutFromTemplate(templateId) {
+  if (activeWorkout) {
+    showToast('A workout is already running! Resume or finish it.');
+    openActiveWorkoutView();
+    return;
+  }
+
+  const tmpl = appTemplates.find(t => t.id === templateId);
+  if (!tmpl) return;
+
+  const exercisesPayload = tmpl.exercises.map(e => {
+    const lastSessionSets = getLastKnownSetsForExercise(e.name);
+    const sets = [];
+    const count = e.defaultSets || 3;
+    for (let i = 0; i < count; i++) {
+      const prev = lastSessionSets && lastSessionSets[i] ? `${lastSessionSets[i].weight} lbs × ${lastSessionSets[i].reps}` : '-';
+      const weightVal = lastSessionSets && lastSessionSets[i] ? lastSessionSets[i].weight : 135;
+      const repsVal = lastSessionSets && lastSessionSets[i] ? lastSessionSets[i].reps : 8;
+
+      sets.push({
+        setNum: i + 1,
+        prev: prev,
+        weight: weightVal,
+        reps: repsVal,
+        completed: false
+      });
+    }
+
+    return {
+      exerciseId: e.exerciseId,
+      name: e.name,
+      restSeconds: e.restSeconds || 90,
+      sets: sets
+    };
+  });
+
+  activeWorkout = {
+    id: 'session_' + Date.now(),
+    name: tmpl.name,
+    startTime: Date.now(),
+    exercises: exercisesPayload
+  };
+
+  saveActiveWorkoutToStorage();
+  startActiveWorkoutTicker();
+  renderActiveWorkoutUI();
+  openActiveWorkoutView();
+  showToast(`Started ${tmpl.name}!`);
+}
+
+function startEmptyWorkout() {
+  if (activeWorkout) {
+    showToast('A workout is already in progress.');
+    openActiveWorkoutView();
+    return;
+  }
+
+  activeWorkout = {
+    id: 'session_' + Date.now(),
+    name: 'Quick Workout',
+    startTime: Date.now(),
+    exercises: []
+  };
+
+  saveActiveWorkoutToStorage();
+  startActiveWorkoutTicker();
+  renderActiveWorkoutUI();
+  openActiveWorkoutView();
+}
+
+function saveActiveWorkoutToStorage() {
+  localStorage.setItem(STORAGE_KEYS.ACTIVE, JSON.stringify(activeWorkout));
+}
+
+function restoreActiveWorkoutIfExists() {
+  const saved = localStorage.getItem(STORAGE_KEYS.ACTIVE);
+  if (saved) {
+    try {
+      activeWorkout = JSON.parse(saved);
+      startActiveWorkoutTicker();
+      updateWorkoutBanner();
+    } catch (e) {
+      localStorage.removeItem(STORAGE_KEYS.ACTIVE);
+    }
+  }
+}
+
+function startActiveWorkoutTicker() {
+  if (workoutIntervalId) clearInterval(workoutIntervalId);
+  updateActiveTimerLabels();
+  workoutIntervalId = setInterval(() => {
+    updateActiveTimerLabels();
+  }, 1000);
+  updateWorkoutBanner();
+}
+
+function updateActiveTimerLabels() {
+  if (!activeWorkout) return;
+  const elapsedSec = Math.floor((Date.now() - activeWorkout.startTime) / 1000);
+  const formatted = formatSeconds(elapsedSec);
+  const activeLabel = document.getElementById('activeWorkoutElapsedTime');
+  const bannerLabel = document.getElementById('bannerWorkoutTimer');
+
+  if (activeLabel) activeLabel.innerText = formatted;
+  if (bannerLabel) bannerLabel.innerText = formatted;
+}
+
+function updateWorkoutBanner() {
+  const banner = document.getElementById('activeWorkoutBanner');
+  const bannerTitle = document.getElementById('bannerWorkoutTitle');
+  if (activeWorkout) {
+    banner.classList.remove('hidden');
+    bannerTitle.innerText = activeWorkout.name || 'Active Workout';
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+function openActiveWorkoutView() {
+  if (!activeWorkout) return;
+  renderActiveWorkoutUI();
+  document.getElementById('activeWorkoutModal').classList.remove('hidden');
+}
+
+function minimizeActiveWorkout() {
+  document.getElementById('activeWorkoutModal').classList.add('hidden');
+  updateWorkoutBanner();
+}
+
+function cancelCurrentWorkoutPrompt() {
+  if (!confirmCustom("Discard this workout? Progress from this session will not be saved.")) return;
+  discardActiveWorkout();
+}
+
+function discardActiveWorkout() {
+  activeWorkout = null;
+  localStorage.removeItem(STORAGE_KEYS.ACTIVE);
+  if (workoutIntervalId) clearInterval(workoutIntervalId);
+  document.getElementById('activeWorkoutModal').classList.add('hidden');
+  updateWorkoutBanner();
+  showToast('Workout discarded');
+}
+
+function finishCurrentWorkout() {
+  if (!activeWorkout) return;
+
+  const finishedExercises = [];
+  let totalVolume = 0;
+
+  activeWorkout.exercises.forEach(ex => {
+    const validSets = ex.sets.filter(s => s.completed || (s.weight > 0 && s.reps > 0));
+    if (validSets.length > 0) {
+      validSets.forEach(s => {
+        totalVolume += (Number(s.weight) * Number(s.reps));
+      });
+      finishedExercises.push({
+        exerciseId: ex.exerciseId,
+        name: ex.name,
+        sets: validSets.map(s => ({
+          setNum: s.setNum,
+          weight: Number(s.weight),
+          reps: Number(s.reps),
+          completed: true
+        }))
+      });
+    }
+  });
+
+  if (finishedExercises.length === 0) {
+    showToast('Log at least one completed set before finishing!');
+    return;
+  }
+
+  const durationSec = Math.floor((Date.now() - activeWorkout.startTime) / 1000);
+  const workoutName = document.getElementById('activeWorkoutNameInput').value.trim() || activeWorkout.name || 'Workout';
+
+  const completedSession = {
+    id: 'session_' + Date.now(),
+    name: workoutName,
+    timestamp: new Date().toISOString(),
+    durationSeconds: durationSec,
+    totalVolume: totalVolume,
+    exercises: finishedExercises
+  };
+
+  appHistory.unshift(completedSession);
+  saveHistoryToStorage();
+
+  activeWorkout = null;
+  localStorage.removeItem(STORAGE_KEYS.ACTIVE);
+  if (workoutIntervalId) clearInterval(workoutIntervalId);
+
+  document.getElementById('activeWorkoutModal').classList.add('hidden');
+  updateWorkoutBanner();
+  renderHistoryList();
+  setupExerciseSelectors();
+
+  showToast(`🎉 Workout logged! Total Volume: ${totalVolume.toLocaleString()} lbs`);
+  switchTab('history');
+}
+
+function renderActiveWorkoutUI() {
+  if (!activeWorkout) return;
+
+  document.getElementById('activeWorkoutNameInput').value = activeWorkout.name;
+  const container = document.getElementById('activeExercisesContainer');
+
+  if (activeWorkout.exercises.length === 0) {
+    container.innerHTML = `
+      <div class="py-16 text-center space-y-3">
+        <i class="ph-bold ph-barbell text-4xl text-slate-600"></i>
+        <p class="text-xs text-slate-400">No exercises added yet.</p>
+        <button onclick="openAddExerciseModal()" class="px-4 py-2 rounded-xl bg-blue-500 text-black font-bold text-xs inline-flex items-center gap-1.5">
+          <i class="ph-bold ph-plus"></i> Add First Exercise
+        </button>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = activeWorkout.exercises.map((ex, exIndex) => {
+    return `
+      <div class="bg-gymCard border border-gymBorder rounded-2xl p-3.5 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <h4 class="text-sm font-bold text-white flex items-center gap-1.5 truncate pr-2">
+            <span class="w-2 h-2 rounded-full bg-blue-400 shrink-0"></span>
+            <span class="truncate">${escapeHtml(ex.name)}</span>
+          </h4>
+          <div class="flex items-center gap-3 shrink-0">
+            <div class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#0a0f16] border border-gymBorder">
+              <i class="ph-bold ph-timer text-[10px] text-slate-500"></i>
+              <input type="number" value="${ex.restSeconds || 90}" onchange="updateExerciseRest(${exIndex}, this.value)" class="w-8 bg-transparent text-blue-400 font-mono text-[10px] text-center outline-none" />
+              <span class="text-[9px] text-slate-500">s</span>
+            </div>
+            <button onclick="removeExerciseFromActive(${exIndex})" class="p-1 text-slate-500 hover:text-red-400 transition-colors">
+              <i class="ph ph-trash text-sm"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-12 gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 text-center px-1">
+          <div class="col-span-2">Set</div>
+          <div class="col-span-3">Previous</div>
+          <div class="col-span-3">lbs</div>
+          <div class="col-span-2">Reps</div>
+          <div class="col-span-2">Done</div>
+        </div>
+
+        <div class="space-y-1.5">
+          ${ex.sets.map((set, setIndex) => `
+            <div class="grid grid-cols-12 gap-1 items-center rounded-xl p-1 transition-colors ${set.completed ? 'bg-blue-950/30 border border-blue-500/30' : 'bg-[#0a0f16]' }">
+              <div class="col-span-2 text-center text-xs font-mono font-bold text-slate-400">
+                ${setIndex + 1}
+              </div>
+              <div class="col-span-3 text-center text-[11px] text-slate-400 font-mono truncate px-0.5">
+                ${set.prev || '-'}
+              </div>
+              <div class="col-span-3">
+                <input type="number" step="2.5" value="${set.weight}" onchange="updateSetActiveValue(${exIndex}, ${setIndex}, 'weight', this.value)" class="w-full bg-slate-800 text-white font-mono font-bold text-xs text-center py-1.5 rounded-lg border border-gymBorder outline-none focus:border-blue-400" />
+              </div>
+              <div class="col-span-2">
+                <input type="number" step="1" value="${set.reps}" onchange="updateSetActiveValue(${exIndex}, ${setIndex}, 'reps', this.value)" class="w-full bg-slate-800 text-white font-mono font-bold text-xs text-center py-1.5 rounded-lg border border-gymBorder outline-none focus:border-blue-400" />
+              </div>
+              <div class="col-span-2 flex justify-center">
+                <button onclick="toggleSetCompleted(${exIndex}, ${setIndex})" class="w-8 h-8 rounded-lg flex items-center justify-center transition-all ${set.completed ? 'bg-blue-500 text-black shadow-md shadow-blue-950' : 'bg-slate-800 text-slate-400 border border-gymBorder hover:border-slate-500'}">
+                  <i class="ph-bold ph-check text-sm"></i>
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="flex items-center justify-between pt-1">
+          <button onclick="addSetToExercise(${exIndex})" class="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1">
+            <i class="ph-bold ph-plus"></i> Add Set
+          </button>
+          ${ex.sets.length > 1 ? `
+            <button onclick="removeLastSet(${exIndex})" class="text-[11px] text-slate-500 hover:text-red-400">
+              Remove Set
+            </button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateExerciseRest(exIdx, val) {
+  if (!activeWorkout || !activeWorkout.exercises[exIdx]) return;
+  activeWorkout.exercises[exIdx].restSeconds = parseInt(val) || 90;
+  saveActiveWorkoutToStorage();
+}
+
+function updateSetActiveValue(exIdx, setIdx, field, val) {
+  if (!activeWorkout || !activeWorkout.exercises[exIdx]) return;
+  activeWorkout.exercises[exIdx].sets[setIdx][field] = Number(val);
+  saveActiveWorkoutToStorage();
+}
+
+function toggleSetCompleted(exIdx, setIdx) {
+  if (!activeWorkout) return;
+  const set = activeWorkout.exercises[exIdx].sets[setIdx];
+  set.completed = !set.completed;
+  saveActiveWorkoutToStorage();
+  renderActiveWorkoutUI();
+
+  if (set.completed) {
+    playRestChime();
+    const programmedRest = activeWorkout.exercises[exIdx].restSeconds || 90;
+    startRestTimer(programmedRest);
+    showToast(`Set ${setIdx + 1} completed! Rest timer set for ${programmedRest}s.`);
+  }
+}
+
+function addSetToExercise(exIdx) {
+  if (!activeWorkout) return;
+  const ex = activeWorkout.exercises[exIdx];
+  const lastSet = ex.sets[ex.sets.length - 1];
+  ex.sets.push({
+    setNum: ex.sets.length + 1,
+    prev: lastSet ? `${lastSet.weight} × ${lastSet.reps}` : '-',
+    weight: lastSet ? lastSet.weight : 135,
+    reps: lastSet ? lastSet.reps : 8,
+    completed: false
+  });
+  saveActiveWorkoutToStorage();
+  renderActiveWorkoutUI();
+}
+
+function removeLastSet(exIdx) {
+  if (!activeWorkout || !activeWorkout.exercises[exIdx]) return;
+  if (activeWorkout.exercises[exIdx].sets.length > 1) {
+    activeWorkout.exercises[exIdx].sets.pop();
+    saveActiveWorkoutToStorage();
+    renderActiveWorkoutUI();
+  }
+}
+
+function removeExerciseFromActive(exIdx) {
+  if (!activeWorkout) return;
+  activeWorkout.exercises.splice(exIdx, 1);
+  saveActiveWorkoutToStorage();
+  renderActiveWorkoutUI();
+}
+
+/* =========================================================================
+   REST TIMER & CHIMES (Tone.js)
+   ========================================================================= */
+function playRestChime() {
+  try {
+    const synth = new Tone.Synth({
+      oscillator: { type: 'sine' },
+      envelope: { attack: 0.005, decay: 0.2, sustain: 0.1, release: 0.6 }
+    }).toDestination();
+    synth.triggerAttackRelease("E5", "8n");
+    setTimeout(() => synth.triggerAttackRelease("A5", "8n"), 150);
+  } catch (e) {}
+}
+
+function startRestTimer(seconds) {
+  restTimerSecondsRemaining = parseInt(seconds) || 0;
+  if (restTimerIntervalId) clearInterval(restTimerIntervalId);
+
+  const headerBadge = document.getElementById('headerTimerBadge');
+  headerBadge.classList.remove('hidden');
+  headerBadge.classList.add('flex');
+
+  updateTimerDisplays();
+
+  restTimerIntervalId = setInterval(() => {
+    restTimerSecondsRemaining--;
+    if (restTimerSecondsRemaining <= 0) {
+      clearInterval(restTimerIntervalId);
+      restTimerSecondsRemaining = 0;
+      playRestChime();
+      showToast('⏰ Rest time is up! Time for next set.');
+      headerBadge.classList.add('hidden');
+      headerBadge.classList.remove('flex');
+    }
+    updateTimerDisplays();
+  }, 1000);
+}
+
+function updateTimerDisplays() {
+  const formatted = formatSeconds(restTimerSecondsRemaining);
+  const activeLabel = document.getElementById('activeTimerCountdown');
+  const headerLabel = document.getElementById('headerTimerText');
+  const modalLabel = document.getElementById('modalTimerDisplay');
+
+  if (activeLabel) activeLabel.innerText = formatted;
+  if (headerLabel) headerLabel.innerText = formatted;
+  if (modalLabel) modalLabel.innerText = formatted;
+}
+
+function addRestTimerSeconds(sec) {
+  restTimerSecondsRemaining += parseInt(sec) || 0;
+  updateTimerDisplays();
+}
+
+function stopRestTimer() {
+  if (restTimerIntervalId) clearInterval(restTimerIntervalId);
+  restTimerSecondsRemaining = 0;
+  updateTimerDisplays();
+  document.getElementById('headerTimerBadge').classList.add('hidden');
+  hideRestTimerModal();
+}
+
+function showRestTimerModal() {
+  document.getElementById('restTimerModal').classList.remove('hidden');
+  document.getElementById('restTimerModal').classList.add('flex');
+}
+function hideRestTimerModal() {
+  document.getElementById('restTimerModal').classList.add('hidden');
+  document.getElementById('restTimerModal').classList.remove('flex');
+}
+
+/* =========================================================================
+   EXERCISE PICKER MODAL & LOOKUPS
+   ========================================================================= */
+function openAddExerciseModal() {
+  renderExercisePickerList();
+  document.getElementById('addExerciseModal').classList.remove('hidden');
+  document.getElementById('addExerciseModal').classList.add('flex');
+}
+
+function closeAddExerciseModal() {
+  document.getElementById('addExerciseModal').classList.add('hidden');
+  document.getElementById('addExerciseModal').classList.remove('flex');
+}
+
+function renderExercisePickerList(searchTerm = '') {
+  const container = document.getElementById('exercisePickerList');
+  const term = searchTerm.toLowerCase();
+
+  const filtered = appExercises.filter(e => {
+    const matchCat = (selectedExerciseCategory === 'All') || (e.category === selectedExerciseCategory);
+    const matchSearch = e.name.toLowerCase().includes(term);
+    return matchCat && matchSearch;
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<div class="py-8 text-center text-xs text-slate-500">No matching exercises found.</div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(e => `
+    <div onclick="selectExerciseForActiveWorkout('${e.id}')" class="py-3 px-2 flex items-center justify-between hover:bg-slate-800/80 rounded-xl cursor-pointer transition-colors">
+      <div>
+        <p class="font-bold text-white text-xs">${escapeHtml(e.name)}</p>
+        <p class="text-[10px] text-slate-400">${e.category}</p>
+      </div>
+      <button class="w-7 h-7 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs">
+        <i class="ph-bold ph-plus"></i>
+      </button>
+    </div>
+  `).join('');
+}
+
+function filterExercisePicker() {
+  const input = document.getElementById('exerciseSearchInput').value;
+  renderExercisePickerList(input);
+}
+
+function filterExerciseCategory(cat) {
+  selectedExerciseCategory = cat;
+  document.querySelectorAll('.cat-filter-btn').forEach(b => {
+    if (b.dataset.cat === cat) {
+      b.classList.remove('bg-slate-800', 'text-slate-300', 'border-gymBorder');
+      b.classList.add('bg-blue-500/20', 'text-blue-300', 'border-blue-500/40');
+    } else {
+      b.classList.add('bg-slate-800', 'text-slate-300', 'border-gymBorder');
+      b.classList.remove('bg-blue-500/20', 'text-blue-300', 'border-blue-500/40');
+    }
+  });
+  filterExercisePicker();
+}
+
+function selectExerciseForActiveWorkout(exerciseId) {
+  if (!activeWorkout) return;
+  const def = appExercises.find(e => e.id === exerciseId);
+  if (!def) return;
+
+  const lastSets = getLastKnownSetsForExercise(def.name);
+  const prevStr = lastSets && lastSets[0] ? `${lastSets[0].weight} × ${lastSets[0].reps}` : '-';
+  const initWeight = lastSets && lastSets[0] ? lastSets[0].weight : 135;
+  const initReps = lastSets && lastSets[0] ? lastSets[0].reps : 8;
+
+  activeWorkout.exercises.push({
+    exerciseId: def.id,
+    name: def.name,
+    restSeconds: 90,
+    sets: [
+      { setNum: 1, prev: prevStr, weight: initWeight, reps: initReps, completed: false },
+      { setNum: 2, prev: prevStr, weight: initWeight, reps: initReps, completed: false },
+      { setNum: 3, prev: prevStr, weight: initWeight, reps: initReps, completed: false }
+    ]
+  });
+
+  saveActiveWorkoutToStorage();
+  renderActiveWorkoutUI();
+  closeAddExerciseModal();
+}
+
+function openCreateCustomExercisePrompt() {
+  const name = promptCustom("Enter name for custom exercise:");
+  if (!name || !name.trim()) return;
+
+  const customId = 'custom_' + Date.now();
+  const newEx = {
+    id: customId,
+    name: name.trim(),
+    category: 'Custom'
+  };
+
+  appExercises.push(newEx);
+  saveExercisesToStorage();
+  setupExerciseSelectors();
+  renderExercisePickerList();
+  showToast(`Created exercise: ${name.trim()}`);
+}
+
+function getLastKnownSetsForExercise(exerciseName) {
+  for (const session of appHistory) {
+    const match = session.exercises.find(e => e.name.toLowerCase() === exerciseName.toLowerCase());
+    if (match && match.sets.length > 0) {
+      return match.sets;
+    }
+  }
+  return null;
+}
+
+/* =========================================================================
+   PROGRESSION CHARTS & TIMELINES (Chart.js)
+   ========================================================================= */
+function setProgressMode(mode) {
+  progressMode = mode;
+  const btnEx = document.getElementById('btnProgModeExercise');
+  const btnMus = document.getElementById('btnProgModeMuscle');
+  const lblSelect = document.getElementById('lblProgressSelect');
+  const toggleGroup = document.getElementById('chartModeToggleGroup');
+  
+  if (mode === 'exercise') {
+    btnEx.className = 'flex-1 py-1.5 text-[11px] rounded-lg bg-blue-500/20 text-blue-400 font-bold border border-blue-500/30 transition-colors';
+    btnMus.className = 'flex-1 py-1.5 text-[11px] rounded-lg text-slate-400 hover:text-white border border-transparent transition-colors';
+    lblSelect.innerText = 'Select Exercise';
+    toggleGroup.classList.remove('hidden');
+  } else {
+    btnMus.className = 'flex-1 py-1.5 text-[11px] rounded-lg bg-blue-500/20 text-blue-400 font-bold border border-blue-500/30 transition-colors';
+    btnEx.className = 'flex-1 py-1.5 text-[11px] rounded-lg text-slate-400 hover:text-white border border-transparent transition-colors';
+    lblSelect.innerText = 'Select Muscle Area';
+    toggleGroup.classList.add('hidden');
+    currentChartMetric = 'volume'; // Force Volume mode for muscle areas
+  }
+  
+  setupExerciseSelectors();
+  renderExerciseTimeline();
+}
+
+function setupExerciseSelectors() {
+  const select = document.getElementById('exerciseProgressSelect');
+  if (!select) return;
+
+  if (progressMode === 'exercise') {
+    const historyExercises = new Set();
+    appHistory.forEach(s => s.exercises.forEach(e => historyExercises.add(e.name)));
+    appExercises.forEach(e => historyExercises.add(e.name));
+
+    const sorted = Array.from(historyExercises).sort();
+    select.innerHTML = sorted.map(name => `
+      <option value="${escapeHtml(name)}" ${name === 'Barbell Bench Press' ? 'selected' : ''}>${escapeHtml(name)}</option>
+    `).join('');
+  } else {
+    const areas = ['Chest', 'Back', 'Shoulders', 'Legs', 'Glutes', 'Calves', 'Arms', 'Core', 'Conditioning'];
+    select.innerHTML = areas.map(name => `
+      <option value="${name}" ${name === 'Chest' ? 'selected' : ''}>${name}</option>
+    `).join('');
+  }
+}
+
+function switchChartMetric(metric) {
+  if (progressMode === 'muscle') return; // Fixed to volume for muscles
+  currentChartMetric = metric;
+  const btnWeight = document.getElementById('chartModeWeight');
+  const btnVolume = document.getElementById('chartModeVolume');
+
+  if (metric === 'weight') {
+    btnWeight.className = 'px-2.5 py-0.5 rounded-md bg-blue-500/20 text-blue-400 font-semibold';
+    btnVolume.className = 'px-2.5 py-0.5 rounded-md text-slate-400 hover:text-white';
+  } else {
+    btnVolume.className = 'px-2.5 py-0.5 rounded-md bg-cyan-500/20 text-cyan-400 font-semibold';
+    btnWeight.className = 'px-2.5 py-0.5 rounded-md text-slate-400 hover:text-white';
+  }
+  renderExerciseTimeline();
+}
+
+function renderExerciseTimeline() {
+  const select = document.getElementById('exerciseProgressSelect');
+  if (!select || !select.value) return;
+  const selection = select.value;
+
+  const dataPoints = [];
+  const sortedSessions = [...appHistory].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+  if (progressMode === 'exercise') {
+    sortedSessions.forEach(session => {
+      const exMatch = session.exercises.find(e => e.name.toLowerCase() === selection.toLowerCase());
+      if (exMatch && exMatch.sets.length > 0) {
+        let maxWeight = 0;
+        let totalVolume = 0;
+        let best1RM = 0;
+
+        exMatch.sets.forEach(s => {
+          const w = Number(s.weight) || 0;
+          const r = Number(s.reps) || 0;
+          if (w > maxWeight) maxWeight = w;
+          totalVolume += (w * r);
+
+          const est1RM = r > 0 ? Math.round(w * (36 / (37 - Math.min(r, 12)))) : w;
+          if (est1RM > best1RM) best1RM = est1RM;
+        });
+
+        const dateObj = new Date(session.timestamp);
+        dataPoints.push({
+          dateLabel: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`,
+          isoDate: session.timestamp,
+          maxWeight: maxWeight,
+          totalVolume: totalVolume,
+          best1RM: best1RM,
+          setsCount: exMatch.sets.length
+        });
+      }
+    });
+  } else {
+    // Muscle Area Aggregation
+    const exToCat = {};
+    appExercises.forEach(e => exToCat[e.name] = e.category);
+
+    sortedSessions.forEach(session => {
+      let sessionVolume = 0;
+      let setsCount = 0;
+      let hasCategory = false;
+
+      session.exercises.forEach(ex => {
+        const cat = exToCat[ex.name] || 'Unknown';
+        if (cat === selection) {
+          hasCategory = true;
+          ex.sets.forEach(s => {
+            const w = Number(s.weight) || 0;
+            const r = Number(s.reps) || 0;
+            sessionVolume += (w * r);
+            setsCount++;
+          });
+        }
+      });
+
+      if (hasCategory) {
+        const dateObj = new Date(session.timestamp);
+        dataPoints.push({
+          dateLabel: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`,
+          isoDate: session.timestamp,
+          maxWeight: 0,
+          totalVolume: sessionVolume,
+          best1RM: 0,
+          setsCount: setsCount
+        });
+      }
+    });
+  }
+
+  updateMetricCards(dataPoints);
+  renderProgressionHistoryTable(dataPoints);
+
+  const ctx = document.getElementById('progressionChart').getContext('2d');
+  const labels = dataPoints.map(p => p.dateLabel);
+  const values = dataPoints.map(p => currentChartMetric === 'weight' && progressMode === 'exercise' ? p.maxWeight : p.totalVolume);
+
+  if (progressionChartInstance) {
+    progressionChartInstance.destroy();
+  }
+
+  const isWeight = currentChartMetric === 'weight' && progressMode === 'exercise';
+  const colorPrimary = isWeight ? '#3b82f6' : '#06b6d4';
+  const colorGlow = isWeight ? 'rgba(16, 185, 129, 0.15)' : 'rgba(6, 182, 212, 0.15)';
+  const datasetLabel = progressMode === 'muscle' ? `${selection} Volume (lbs)` : (isWeight ? 'Max Weight (lbs)' : 'Session Volume (lbs)');
+
+  progressionChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: datasetLabel,
+        data: values,
+        borderColor: colorPrimary,
+        backgroundColor: colorGlow,
+        fill: true,
+        tension: 0.35,
+        borderWidth: 2.5,
+        pointBackgroundColor: colorPrimary,
+        pointBorderColor: '#0e141f',
+        pointBorderWidth: 2,
+        pointRadius: 4.5,
+        pointHoverRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#131b26',
+          titleColor: '#fff',
+          bodyColor: '#3b82f6',
+          borderColor: '#1f2d3d',
+          borderWidth: 1,
+          padding: 8,
+          displayColors: false
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(31, 45, 61, 0.5)' },
+          ticks: { color: '#64748b', font: { size: 10 } }
+        },
+        y: {
+          grid: { color: 'rgba(31, 45, 61, 0.5)' },
+          ticks: { color: '#64748b', font: { size: 10 } }
+        }
+      }
+    }
+  });
+}
+
+function updateMetricCards(dataPoints) {
+  const labelBest = document.getElementById('lblMetricBest');
+  const labelEst1rm = document.getElementById('lblMetricEst1RM');
+  const valBest = document.getElementById('metricCurrentBest');
+  const valEst1rm = document.getElementById('metricEst1RM');
+  const badgeEl = document.getElementById('metricTrendBadge');
+
+  if (!dataPoints || dataPoints.length === 0) {
+    labelBest.innerText = progressMode === 'exercise' ? 'Current Best' : 'Peak Volume';
+    labelEst1rm.innerText = progressMode === 'exercise' ? 'Est. 1RM' : 'Avg Sets';
+    valBest.innerText = '--';
+    valEst1rm.innerText = '--';
+    badgeEl.className = 'inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full mt-1 bg-slate-800 text-slate-400';
+    badgeEl.innerHTML = 'No data yet';
+    return;
+  }
+
+  if (progressMode === 'exercise') {
+    labelBest.innerText = 'Current Best';
+    labelEst1rm.innerText = 'Est. 1RM';
+    const absoluteBest = Math.max(...dataPoints.map(p => p.maxWeight));
+    const highest1RM = Math.max(...dataPoints.map(p => p.best1RM));
+    valBest.innerText = `${absoluteBest} lbs`;
+    valEst1rm.innerText = `${highest1RM} lbs`;
+  } else {
+    labelBest.innerText = 'Peak Volume';
+    labelEst1rm.innerText = 'Avg Sets/Session';
+    const peakVol = Math.max(...dataPoints.map(p => p.totalVolume));
+    const avgSets = Math.round(dataPoints.reduce((acc, p) => acc + p.setsCount, 0) / dataPoints.length);
+    valBest.innerText = `${peakVol.toLocaleString()} lbs`;
+    valEst1rm.innerText = `${avgSets}`;
+  }
+
+  if (dataPoints.length >= 3) {
+    const last3 = dataPoints.slice(-3);
+    const m0 = progressMode === 'exercise' ? last3[0].maxWeight : last3[0].totalVolume;
+    const m1 = progressMode === 'exercise' ? last3[1].maxWeight : last3[1].totalVolume;
+    const m2 = progressMode === 'exercise' ? last3[2].maxWeight : last3[2].totalVolume;
+
+    if (m2 > m1 && m1 >= m0) {
+      badgeEl.className = 'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 bg-blue-500/20 text-blue-400 border border-blue-500/30';
+      badgeEl.innerHTML = '<i class="ph-bold ph-trend-up"></i> Overloading';
+    } else if (m2 === m1 && m1 === m0) {
+      badgeEl.className = 'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 bg-amber-500/20 text-amber-400 border border-amber-500/30';
+      badgeEl.innerHTML = '<i class="ph-bold ph-pause"></i> Stalled';
+    } else if (m2 < m1) {
+      badgeEl.className = 'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 bg-red-500/20 text-red-400 border border-red-500/30';
+      badgeEl.innerHTML = '<i class="ph-bold ph-trend-down"></i> Regressing';
+    } else {
+      badgeEl.className = 'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 bg-slate-800 text-slate-300';
+      badgeEl.innerHTML = '<i class="ph-bold ph-minus"></i> Steady';
+    }
+  } else {
+    badgeEl.className = 'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 bg-slate-800 text-slate-300';
+    badgeEl.innerHTML = 'Accumulating data';
+  }
+}
+
+function renderProgressionHistoryTable(dataPoints) {
+  const container = document.getElementById('exerciseSessionHistory');
+  if (!container) return;
+
+  if (dataPoints.length === 0) {
+    container.innerHTML = `<p class="text-slate-500 text-center py-4">No logged history.</p>`;
+    return;
+  }
+
+  const reversed = [...dataPoints].reverse();
+  container.innerHTML = reversed.map(p => {
+    const d = new Date(p.isoDate);
+    const weightDisplay = progressMode === 'exercise' 
+      ? `<span class="font-mono text-blue-400 font-bold">${p.maxWeight} lbs</span>` 
+      : ``;
+
+    return `
+      <div class="flex items-center justify-between p-2 rounded-lg bg-[#0a0f16] border border-gymBorder/60">
+        <div>
+          <span class="text-slate-300 font-semibold">${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+          <span class="text-[10px] text-slate-500 ml-1">(${p.setsCount} sets)</span>
+        </div>
+        <div class="flex items-center gap-3">
+          ${weightDisplay}
+          <span class="font-mono ${progressMode === 'muscle' ? 'text-cyan-400 font-bold' : 'text-[10px] text-slate-400'}">${p.totalVolume.toLocaleString()} vol</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/* =========================================================================
+   HISTORY LIST & MODALS
+   ========================================================================= */
+function renderHistoryList() {
+  const container = document.getElementById('historyList');
+  const countBadge = document.getElementById('historySessionCount');
+  if (!container) return;
+
+  countBadge.innerText = `${appHistory.length} Sessions`;
+
+  if (appHistory.length === 0) {
+    container.innerHTML = `
+      <div class="p-8 text-center border border-dashed border-gymBorder rounded-2xl text-xs text-slate-500">
+        No completed workouts yet. Start one from the Workouts tab!
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = appHistory.map((s, idx) => {
+    const d = new Date(s.timestamp);
+    const dateFormatted = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const durationMin = Math.round((s.durationSeconds || 3600) / 60);
+
+    return `
+      <div class="bg-gymCard border border-gymBorder rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between border-b border-gymBorder/60 pb-2">
+          <div>
+            <h3 class="font-bold text-sm text-white">${escapeHtml(s.name)}</h3>
+            <span class="text-[11px] text-slate-400">${dateFormatted} • ${durationMin} mins</span>
+          </div>
+          <div class="text-right">
+            <span class="text-xs font-mono font-bold text-blue-400">${s.totalVolume ? s.totalVolume.toLocaleString() : 0} lbs</span>
+            <p class="text-[10px] text-slate-500 uppercase">Volume</p>
+          </div>
+        </div>
+
+        <div class="space-y-1 text-xs">
+          ${s.exercises.map(ex => {
+            const bestSet = ex.sets.reduce((max, c) => c.weight > max.weight ? c : max, { weight: 0, reps: 0 });
+            return `
+              <div class="flex items-center justify-between text-slate-300 py-0.5">
+                <span class="truncate max-w-[200px]">${ex.sets.length}× ${escapeHtml(ex.name)}</span>
+                <span class="text-[11px] font-mono text-slate-400">Best: ${bestSet.weight} × ${bestSet.reps}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleSettingsModal() {
+  const modal = document.getElementById('settingsModal');
+  modal.classList.toggle('hidden');
+  modal.classList.toggle('flex');
+}
+
+function seedSampleDataPrompt() {
+  if (confirmCustom("Reload default 4-week sample lifting data? This will overwrite existing history.")) {
+    appHistory = generateRealisticMockHistory();
+    saveHistoryToStorage();
+    renderHistoryList();
+    setupExerciseSelectors();
+    renderExerciseTimeline();
+    toggleSettingsModal();
+    showToast('Loaded 4-week progressive overload sample logs');
+  }
+}
+
+function seedMoreHistoricalData() {
+  seedSampleDataPrompt();
+}
+
+function clearAllWorkoutDataPrompt() {
+  if (confirmCustom("Are you sure? This will delete all logged sessions from storage.")) {
+    appHistory = [];
+    saveHistoryToStorage();
+    renderHistoryList();
+    setupExerciseSelectors();
+    renderExerciseTimeline();
+    toggleSettingsModal();
+    showToast('All workout logs cleared.');
+  }
+}
+
+/* =========================================================================
+   UI HELPERS
+   ========================================================================= */
+let toastTimeout = null;
+function showToast(message) {
+  const toast = document.getElementById('appToast');
+  const msg = document.getElementById('appToastMessage');
+  msg.innerText = message;
+
+  toast.classList.remove('-translate-y-10', 'opacity-0', 'pointer-events-none');
+  toast.classList.add('translate-y-0', 'opacity-100');
+
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => {
+    toast.classList.remove('translate-y-0', 'opacity-100');
+    toast.classList.add('-translate-y-10', 'opacity-0', 'pointer-events-none');
+  }, 2800);
+}
+
+function confirmCustom(msg) {
+  return window.confirm(msg);
+}
+
+function promptCustom(msg) {
+  return window.prompt(msg);
+}
+
+function formatSeconds(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/[&<>"']/g, m => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[m]);
+}
+</script>
+</body>
+</html>
