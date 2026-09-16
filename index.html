@@ -32,6 +32,14 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
   <style>
+    /* Purple visual system */
+    .text-blue-400, .text-cyan-400 { color: #c084fc !important; }
+    .text-blue-300, .text-cyan-300 { color: #d8b4fe !important; }
+    .bg-blue-500, .bg-cyan-500 { background-color: #a855f7 !important; }
+    .bg-blue-500\/20, .bg-cyan-500\/20 { background-color: rgb(168 85 247 / 0.2) !important; }
+    .border-blue-500, .border-cyan-500 { border-color: #a855f7 !important; }
+    .border-blue-500\/30, .border-cyan-500\/30 { border-color: rgb(168 85 247 / 0.3) !important; }
+    input:focus, select:focus { border-color: #a855f7 !important; outline-color: #a855f7 !important; }
     body {
       touch-action: manipulation;
       -webkit-tap-highlight-color: transparent;
@@ -174,6 +182,24 @@
           <div class="relative h-60 w-full">
             <canvas id="progressionChart"></canvas>
           </div>
+        </div>
+
+        <!-- 30-day volume change by muscle area -->
+        <div class="bg-gymCard p-4 rounded-2xl border border-gymBorder shadow-inner">
+          <div class="flex items-start justify-between mb-3">
+            <div>
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <i class="ph-bold ph-person-simple-run text-purple-400"></i> Body Volume Heatmap
+              </h3>
+              <p class="text-[10px] text-slate-500 mt-1">Current 30 days vs. previous 30 days</p>
+            </div>
+            <div class="flex items-center gap-2 text-[10px] text-slate-400">
+              <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-emerald-500"></i> Up</span>
+              <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-red-500"></i> Down</span>
+            </div>
+          </div>
+          <div id="bodyHeatmap" class="min-h-[250px]"></div>
+          <p id="heatmapSummary" class="text-[10px] text-slate-500 text-center mt-2"></p>
         </div>
 
         <div class="bg-gymCard p-4 rounded-xl border border-gymBorder">
@@ -329,7 +355,7 @@
           </button>
         </div>
         <div class="space-y-2">
-          <p class="text-slate-400 text-[11px]">All workout logs and custom templates are stored locally in your device's browser memory.</p>
+          <p class="text-slate-400 text-[11px]">Workout logs, templates, and active sessions are stored in IndexedDB, a persistent on-device database. Existing browser data is migrated automatically.</p>
           <div class="p-3 bg-slate-900/80 rounded-xl border border-gymBorder space-y-1">
             <span class="text-blue-400 font-semibold block">Mobile Installation Tip:</span>
             <span class="text-slate-300 text-[11px]">Tap the "Share" button in Safari or the menu in Chrome, then select <strong>"Add to Home Screen"</strong> for full-screen native gym use.</span>
@@ -375,6 +401,63 @@ const STORAGE_KEYS = {
   EXERCISES: 'apex_exercises_v3',
   ACTIVE: 'apex_active_workout_v2'
 };
+const DATA_DB_NAME = 'apex_strong_data';
+const DATA_DB_VERSION = 1;
+let dataDbPromise = null;
+let storageMode = 'IndexedDB';
+
+function openDataDb() {
+  if (dataDbPromise) return dataDbPromise;
+  dataDbPromise = new Promise((resolve, reject) => {
+    if (!window.indexedDB) return reject(new Error('IndexedDB unavailable'));
+    const request = indexedDB.open(DATA_DB_NAME, DATA_DB_VERSION);
+    request.onupgradeneeded = () => request.result.createObjectStore('records');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  return dataDbPromise;
+}
+
+async function readStored(key) {
+  try {
+    const db = await openDataDb();
+    return await new Promise((resolve, reject) => {
+      const request = db.transaction('records', 'readonly').objectStore('records').get(key);
+      request.onsuccess = () => resolve(request.result ?? null);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    storageMode = 'Browser fallback';
+    return localStorage.getItem(key);
+  }
+}
+
+async function writeStored(key, value) {
+  try {
+    const db = await openDataDb();
+    await new Promise((resolve, reject) => {
+      const request = db.transaction('records', 'readwrite').objectStore('records').put(value, key);
+      request.onsuccess = resolve;
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    storageMode = 'Browser fallback';
+    localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+  }
+}
+
+async function removeStored(key) {
+  try {
+    const db = await openDataDb();
+    await new Promise((resolve, reject) => {
+      const request = db.transaction('records', 'readwrite').objectStore('records').delete(key);
+      request.onsuccess = resolve;
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    localStorage.removeItem(key);
+  }
+}
 
 const DEFAULT_EXERCISES = [
   // Chest
@@ -578,23 +661,37 @@ let selectedExerciseCategory = 'All';
 /* =========================================================================
    BOOTSTRAP & LOCAL STORAGE INITIALIZATION
    ========================================================================= */
-window.addEventListener('DOMContentLoaded', () => {
-  initStorage();
+window.addEventListener('DOMContentLoaded', async () => {
+  await initStorage();
   renderTemplatesList();
   renderHistoryList();
   setupExerciseSelectors();
-  restoreActiveWorkoutIfExists();
+  await restoreActiveWorkoutIfExists();
 });
 
-function initStorage() {
-  const storedTemplates = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
-  const storedExercises = localStorage.getItem(STORAGE_KEYS.EXERCISES);
-  const storedHistory = localStorage.getItem(STORAGE_KEYS.HISTORY);
+async function initStorage() {
+  let storedTemplates = await readStored(STORAGE_KEYS.TEMPLATES);
+  let storedExercises = await readStored(STORAGE_KEYS.EXERCISES);
+  let storedHistory = await readStored(STORAGE_KEYS.HISTORY);
 
-  appTemplates = storedTemplates ? JSON.parse(storedTemplates) : DEFAULT_TEMPLATES;
+  // One-time migration from the old localStorage keys into IndexedDB.
+  if (storageMode === 'IndexedDB' && !storedHistory && !storedTemplates && !storedExercises) {
+    const legacy = Object.values(STORAGE_KEYS).map(key => [key, localStorage.getItem(key)]);
+    for (const [key, value] of legacy) {
+      if (value !== null) await writeStored(key, value);
+    }
+    storedTemplates = await readStored(STORAGE_KEYS.TEMPLATES);
+    storedExercises = await readStored(STORAGE_KEYS.EXERCISES);
+    storedHistory = await readStored(STORAGE_KEYS.HISTORY);
+    if (legacy.some(([, value]) => value !== null)) {
+      Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+    }
+  }
+
+  appTemplates = storedTemplates ? (typeof storedTemplates === 'string' ? JSON.parse(storedTemplates) : storedTemplates) : DEFAULT_TEMPLATES;
   
   if (storedExercises) {
-    const parsed = JSON.parse(storedExercises);
+    const parsed = typeof storedExercises === 'string' ? JSON.parse(storedExercises) : storedExercises;
     const existingNames = new Set(parsed.map(e => e.name));
     DEFAULT_EXERCISES.forEach(def => {
       if (!existingNames.has(def.name)) parsed.push(def);
@@ -605,7 +702,7 @@ function initStorage() {
   }
 
   if (storedHistory) {
-    appHistory = JSON.parse(storedHistory);
+    appHistory = typeof storedHistory === 'string' ? JSON.parse(storedHistory) : storedHistory;
   } else {
     appHistory = generateRealisticMockHistory();
     saveHistoryToStorage();
@@ -616,13 +713,13 @@ function initStorage() {
 }
 
 function saveTemplatesToStorage() {
-  localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(appTemplates));
+  writeStored(STORAGE_KEYS.TEMPLATES, appTemplates);
 }
 function saveHistoryToStorage() {
-  localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(appHistory));
+  writeStored(STORAGE_KEYS.HISTORY, appHistory);
 }
 function saveExercisesToStorage() {
-  localStorage.setItem(STORAGE_KEYS.EXERCISES, JSON.stringify(appExercises));
+  writeStored(STORAGE_KEYS.EXERCISES, appExercises);
 }
 
 function generateRealisticMockHistory() {
@@ -772,6 +869,7 @@ function switchTab(tabId) {
 
   if (tabId === 'progress') {
     renderExerciseTimeline();
+    renderBodyHeatmap();
   } else if (tabId === 'history') {
     renderHistoryList();
   }
@@ -970,18 +1068,18 @@ function startEmptyWorkout() {
 }
 
 function saveActiveWorkoutToStorage() {
-  localStorage.setItem(STORAGE_KEYS.ACTIVE, JSON.stringify(activeWorkout));
+  writeStored(STORAGE_KEYS.ACTIVE, activeWorkout);
 }
 
-function restoreActiveWorkoutIfExists() {
-  const saved = localStorage.getItem(STORAGE_KEYS.ACTIVE);
+async function restoreActiveWorkoutIfExists() {
+  let saved = await readStored(STORAGE_KEYS.ACTIVE);
   if (saved) {
     try {
-      activeWorkout = JSON.parse(saved);
+      activeWorkout = typeof saved === 'string' ? JSON.parse(saved) : saved;
       startActiveWorkoutTicker();
       updateWorkoutBanner();
     } catch (e) {
-      localStorage.removeItem(STORAGE_KEYS.ACTIVE);
+      removeStored(STORAGE_KEYS.ACTIVE);
     }
   }
 }
@@ -1035,7 +1133,7 @@ function cancelCurrentWorkoutPrompt() {
 
 function discardActiveWorkout() {
   activeWorkout = null;
-  localStorage.removeItem(STORAGE_KEYS.ACTIVE);
+  removeStored(STORAGE_KEYS.ACTIVE);
   if (workoutIntervalId) clearInterval(workoutIntervalId);
   document.getElementById('activeWorkoutModal').classList.add('hidden');
   updateWorkoutBanner();
@@ -1088,7 +1186,7 @@ function finishCurrentWorkout() {
   saveHistoryToStorage();
 
   activeWorkout = null;
-  localStorage.removeItem(STORAGE_KEYS.ACTIVE);
+  removeStored(STORAGE_KEYS.ACTIVE);
   if (workoutIntervalId) clearInterval(workoutIntervalId);
 
   document.getElementById('activeWorkoutModal').classList.add('hidden');
@@ -1579,8 +1677,8 @@ function renderExerciseTimeline() {
   }
 
   const isWeight = currentChartMetric === 'weight' && progressMode === 'exercise';
-  const colorPrimary = isWeight ? '#3b82f6' : '#06b6d4';
-  const colorGlow = isWeight ? 'rgba(16, 185, 129, 0.15)' : 'rgba(6, 182, 212, 0.15)';
+  const colorPrimary = '#a855f7';
+  const colorGlow = 'rgba(168, 85, 247, 0.15)';
   const datasetLabel = progressMode === 'muscle' ? `${selection} Volume (lbs)` : (isWeight ? 'Max Weight (lbs)' : 'Session Volume (lbs)');
 
   progressionChartInstance = new Chart(ctx, {
@@ -1610,7 +1708,7 @@ function renderExerciseTimeline() {
         tooltip: {
           backgroundColor: '#131b26',
           titleColor: '#fff',
-          bodyColor: '#3b82f6',
+          bodyColor: '#c084fc',
           borderColor: '#1f2d3d',
           borderWidth: 1,
           padding: 8,
@@ -1718,6 +1816,72 @@ function renderProgressionHistoryTable(dataPoints) {
       </div>
     `;
   }).join('');
+}
+
+function renderBodyHeatmap() {
+  const container = document.getElementById('bodyHeatmap');
+  const summary = document.getElementById('heatmapSummary');
+  if (!container) return;
+
+  const categories = ['Chest', 'Shoulders', 'Back', 'Arms', 'Core', 'Glutes', 'Legs', 'Calves'];
+  const categoryByName = {};
+  appExercises.forEach(ex => categoryByName[ex.name.toLowerCase()] = ex.category);
+  const now = Date.now();
+  const currentStart = now - 30 * 86400000;
+  const previousStart = now - 60 * 86400000;
+  const totals = Object.fromEntries(categories.map(category => [category, { current: 0, previous: 0 }]));
+
+  appHistory.forEach(session => {
+    const time = new Date(session.timestamp).getTime();
+    const period = time >= currentStart ? 'current' : (time >= previousStart ? 'previous' : null);
+    if (!period) return;
+    session.exercises.forEach(exercise => {
+      const category = categoryByName[exercise.name.toLowerCase()];
+      if (!totals[category]) return;
+      totals[category][period] += exercise.sets.reduce((total, set) => total + (Number(set.weight) || 0) * (Number(set.reps) || 0), 0);
+    });
+  });
+
+  const colorFor = category => {
+    const data = totals[category];
+    if (!data.current && !data.previous) return '#334155';
+    if (data.current > data.previous) return '#22c55e';
+    if (data.current < data.previous) return '#ef4444';
+    return '#64748b';
+  };
+  const titleFor = category => {
+    const data = totals[category];
+    const change = data.previous ? ((data.current - data.previous) / data.previous) * 100 : (data.current ? 100 : 0);
+    return `${category}: ${change >= 0 ? '+' : ''}${Math.round(change)}% (${data.current.toLocaleString()} lbs current)`;
+  };
+  const muscle = (category, shape) => `<${shape} fill="${colorFor(category)}" stroke="#0e141f" stroke-width="2" opacity="0.95"><title>${escapeHtml(titleFor(category))}</title></${shape}>`;
+
+  container.innerHTML = `<div class="flex justify-center gap-5 overflow-hidden" aria-label="Body volume heatmap">
+    <div class="text-center"><svg viewBox="0 0 120 250" class="h-56 w-28" role="img" aria-label="Front body map">
+      <text x="60" y="12" text-anchor="middle" fill="#94a3b8" font-size="8">FRONT</text>
+      <circle cx="60" cy="29" r="13" fill="#475569" stroke="#0e141f" stroke-width="2"><title>Head</title></circle>
+      ${muscle('Shoulders', 'path d="M43 49 L20 55 L27 72 L46 64 Z"')}${muscle('Shoulders', 'path d="M77 49 L100 55 L93 72 L74 64 Z"')}
+      ${muscle('Chest', 'path d="M45 49 Q60 43 75 49 L71 78 Q60 84 49 78 Z"')}
+      ${muscle('Arms', 'path d="M22 58 L10 86 L18 91 L36 67 Z"')}${muscle('Arms', 'path d="M98 58 L110 86 L102 91 L84 67 Z"')}
+      ${muscle('Core', 'path d="M48 79 L72 79 L68 125 L52 125 Z"')}
+      ${muscle('Legs', 'path d="M49 126 L59 126 L57 207 L43 207 Z"')}${muscle('Legs', 'path d="M61 126 L71 126 L77 207 L63 207 Z"')}
+      ${muscle('Calves', 'path d="M43 208 L57 208 L55 237 L43 237 Z"')}${muscle('Calves', 'path d="M63 208 L77 208 L79 237 L67 237 Z"')}
+    </svg></div>
+    <div class="text-center"><svg viewBox="0 0 120 250" class="h-56 w-28" role="img" aria-label="Back body map">
+      <text x="60" y="12" text-anchor="middle" fill="#94a3b8" font-size="8">BACK</text>
+      <circle cx="60" cy="29" r="13" fill="#475569" stroke="#0e141f" stroke-width="2"><title>Head</title></circle>
+      ${muscle('Shoulders', 'path d="M43 49 L20 55 L27 72 L46 64 Z"')}${muscle('Shoulders', 'path d="M77 49 L100 55 L93 72 L74 64 Z"')}
+      ${muscle('Back', 'path d="M45 49 Q60 43 75 49 L71 91 Q60 99 49 91 Z"')}
+      ${muscle('Arms', 'path d="M22 58 L10 86 L18 91 L36 67 Z"')}${muscle('Arms', 'path d="M98 58 L110 86 L102 91 L84 67 Z"')}
+      ${muscle('Glutes', 'path d="M48 92 L72 92 L73 125 L47 125 Z"')}
+      ${muscle('Legs', 'path d="M49 126 L59 126 L57 207 L43 207 Z"')}${muscle('Legs', 'path d="M61 126 L71 126 L77 207 L63 207 Z"')}
+      ${muscle('Calves', 'path d="M43 208 L57 208 L55 237 L43 237 Z"')}${muscle('Calves', 'path d="M63 208 L77 208 L79 237 L67 237 Z"')}
+    </svg></div>
+  </div>`;
+
+  const improved = categories.filter(category => totals[category].current > totals[category].previous).length;
+  const declined = categories.filter(category => totals[category].current < totals[category].previous).length;
+  summary.innerText = improved || declined ? `${improved} areas improving · ${declined} areas down` : 'Log workouts in both periods to compare volume';
 }
 
 /* =========================================================================
