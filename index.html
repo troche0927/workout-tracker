@@ -149,6 +149,10 @@
 
         <div class="bg-gymCard p-3 rounded-xl border border-gymBorder">
           <label id="lblProgressSelect" class="text-[11px] font-semibold uppercase text-slate-400 block mb-1.5">Select Exercise</label>
+          <div class="relative mb-2">
+            <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+            <input id="progressExerciseSearch" type="search" placeholder="Search exercises..." oninput="filterProgressExercises()" class="w-full bg-[#0a0f16] border border-gymBorder text-white text-xs rounded-lg pl-9 pr-3 py-2.5 outline-none focus:border-blue-500" />
+          </div>
           <select id="exerciseProgressSelect" onchange="renderExerciseTimeline()" class="w-full bg-[#0a0f16] border border-gymBorder text-white text-sm rounded-lg p-2.5 outline-none focus:border-blue-500"></select>
         </div>
 
@@ -198,7 +202,7 @@
               <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-red-500"></i> Down</span>
             </div>
           </div>
-          <div id="bodyHeatmap" class="min-h-[250px]"></div>
+          <div id="bodyHeatmap" class="min-h-[300px]"></div>
           <p id="heatmapSummary" class="text-[10px] text-slate-500 text-center mt-2"></p>
         </div>
 
@@ -339,7 +343,7 @@
         </div>
 
         <div class="flex gap-2 pt-2">
-          <button onclick="saveNewTemplate()" class="flex-1 py-2.5 bg-blue-500 hover:bg-blue-400 text-black font-bold text-xs rounded-xl">Save Template</button>
+          <button id="templateSaveButton" onclick="saveTemplate()" class="flex-1 py-2.5 bg-blue-500 hover:bg-blue-400 text-black font-bold text-xs rounded-xl">Save Template</button>
           <button onclick="closeTemplateModal()" class="px-4 py-2.5 bg-slate-800 text-slate-300 text-xs rounded-xl">Cancel</button>
         </div>
       </div>
@@ -657,6 +661,7 @@ let progressMode = 'exercise'; // 'exercise' or 'muscle'
 let progressionChartInstance = null;
 let currentChartMetric = 'weight'; 
 let selectedExerciseCategory = 'All';
+let editingTemplateId = null;
 
 /* =========================================================================
    BOOTSTRAP & LOCAL STORAGE INITIALIZATION
@@ -899,6 +904,9 @@ function renderTemplatesList() {
           <div class="flex items-center justify-between">
             <h3 class="font-bold text-sm text-white">${escapeHtml(t.name)}</h3>
             <div class="flex items-center gap-1">
+              <button onclick="openEditTemplateModal('${t.id}')" class="p-1.5 text-slate-500 hover:text-blue-400 transition-colors" title="Edit Template">
+                <i class="ph ph-pencil-simple text-sm"></i>
+              </button>
               <button onclick="deleteTemplate('${t.id}')" class="p-1.5 text-slate-500 hover:text-red-400 transition-colors" title="Delete Template">
                 <i class="ph ph-trash text-sm"></i>
               </button>
@@ -916,6 +924,16 @@ function renderTemplatesList() {
 }
 
 function openCreateTemplateModal() {
+  openTemplateModal(null);
+}
+
+function openEditTemplateModal(templateId) {
+  openTemplateModal(templateId);
+}
+
+function openTemplateModal(templateId) {
+  editingTemplateId = templateId;
+  const template = templateId ? appTemplates.find(t => t.id === templateId) : null;
   const checklist = document.getElementById('templateExerciseChecklist');
   checklist.innerHTML = appExercises.map(e => `
     <div class="flex flex-col gap-1 p-2 rounded-lg bg-[#0a0f16] border border-gymBorder mb-1">
@@ -937,15 +955,35 @@ function openCreateTemplateModal() {
     </div>
   `).join('');
 
-  document.getElementById('newTemplateName').value = '';
+  if (template) {
+    document.getElementById('templateModalTitle').innerText = 'Edit Workout Template';
+    document.getElementById('templateSaveButton').innerText = 'Save Changes';
+    document.getElementById('newTemplateName').value = template.name;
+    template.exercises.forEach(exercise => {
+      const checkbox = document.querySelector(`.tmpl-checkbox[value="${exercise.exerciseId}"]`);
+      if (!checkbox) return;
+      checkbox.checked = true;
+      document.getElementById(`tmpl_details_${exercise.exerciseId}`).classList.remove('hidden');
+      document.getElementById(`tmpl_sets_${exercise.exerciseId}`).value = exercise.defaultSets || 3;
+      document.getElementById(`tmpl_rest_${exercise.exerciseId}`).value = exercise.restSeconds || 90;
+    });
+  } else {
+    document.getElementById('templateModalTitle').innerText = 'Create Workout Template';
+    document.getElementById('templateSaveButton').innerText = 'Save Template';
+    document.getElementById('newTemplateName').value = '';
+  }
   document.getElementById('templateModal').classList.remove('hidden');
+  document.getElementById('templateModal').classList.add('flex');
 }
 
 function closeTemplateModal() {
   document.getElementById('templateModal').classList.add('hidden');
+  document.getElementById('templateModal').classList.remove('flex');
+  editingTemplateId = null;
 }
 
-function saveNewTemplate() {
+function saveTemplate() {
+  const isEditing = Boolean(editingTemplateId);
   const nameInput = document.getElementById('newTemplateName');
   const name = nameInput.value.trim();
   if (!name) {
@@ -973,18 +1011,24 @@ function saveNewTemplate() {
     return;
   }
 
-  const newTmpl = {
-    id: 'tmpl_' + Date.now(),
-    name: name,
-    color: '#3b82f6',
-    exercises: exercises
-  };
-
-  appTemplates.push(newTmpl);
+  if (editingTemplateId) {
+    const template = appTemplates.find(t => t.id === editingTemplateId);
+    if (template) {
+      template.name = name;
+      template.exercises = exercises;
+    }
+  } else {
+    appTemplates.push({
+      id: 'tmpl_' + Date.now(),
+      name: name,
+      color: '#3b82f6',
+      exercises: exercises
+    });
+  }
   saveTemplatesToStorage();
   renderTemplatesList();
   closeTemplateModal();
-  showToast(`Template "${name}" saved!`);
+  showToast(`Template "${name}" ${isEditing ? 'updated' : 'saved'}!`);
 }
 
 function deleteTemplate(templateId) {
@@ -1536,6 +1580,8 @@ function setProgressMode(mode) {
   const btnMus = document.getElementById('btnProgModeMuscle');
   const lblSelect = document.getElementById('lblProgressSelect');
   const toggleGroup = document.getElementById('chartModeToggleGroup');
+  const searchInput = document.getElementById('progressExerciseSearch');
+  if (searchInput) searchInput.placeholder = mode === 'exercise' ? 'Search exercises...' : 'Search muscle areas...';
   
   if (mode === 'exercise') {
     btnEx.className = 'flex-1 py-1.5 text-[11px] rounded-lg bg-blue-500/20 text-blue-400 font-bold border border-blue-500/30 transition-colors';
@@ -1557,22 +1603,35 @@ function setProgressMode(mode) {
 function setupExerciseSelectors() {
   const select = document.getElementById('exerciseProgressSelect');
   if (!select) return;
+  const previousValue = select.value;
+  const searchInput = document.getElementById('progressExerciseSearch');
+  const searchTerm = (searchInput ? searchInput.value : '').trim().toLowerCase();
 
   if (progressMode === 'exercise') {
     const historyExercises = new Set();
     appHistory.forEach(s => s.exercises.forEach(e => historyExercises.add(e.name)));
     appExercises.forEach(e => historyExercises.add(e.name));
 
-    const sorted = Array.from(historyExercises).sort();
+    const sorted = Array.from(historyExercises).sort().filter(name => !searchTerm || name.toLowerCase().includes(searchTerm));
     select.innerHTML = sorted.map(name => `
-      <option value="${escapeHtml(name)}" ${name === 'Barbell Bench Press' ? 'selected' : ''}>${escapeHtml(name)}</option>
+      <option value="${escapeHtml(name)}">${escapeHtml(name)}</option>
     `).join('');
+    if (sorted.includes(previousValue)) select.value = previousValue;
+    else if (sorted.includes('Barbell Bench Press')) select.value = 'Barbell Bench Press';
   } else {
     const areas = ['Chest', 'Back', 'Shoulders', 'Legs', 'Glutes', 'Calves', 'Arms', 'Core', 'Conditioning'];
-    select.innerHTML = areas.map(name => `
-      <option value="${name}" ${name === 'Chest' ? 'selected' : ''}>${name}</option>
+    const filteredAreas = areas.filter(name => !searchTerm || name.toLowerCase().includes(searchTerm));
+    select.innerHTML = filteredAreas.map(name => `
+      <option value="${name}">${name}</option>
     `).join('');
+    if (filteredAreas.includes(previousValue)) select.value = previousValue;
+    else if (filteredAreas.includes('Chest')) select.value = 'Chest';
   }
+}
+
+function filterProgressExercises() {
+  setupExerciseSelectors();
+  renderExerciseTimeline();
 }
 
 function switchChartMetric(metric) {
@@ -1818,7 +1877,7 @@ function renderProgressionHistoryTable(dataPoints) {
   }).join('');
 }
 
-function renderBodyHeatmap() {
+function renderBodyHeatmapLegacy() {
   const container = document.getElementById('bodyHeatmap');
   const summary = document.getElementById('heatmapSummary');
   if (!container) return;
@@ -1882,6 +1941,45 @@ function renderBodyHeatmap() {
   const improved = categories.filter(category => totals[category].current > totals[category].previous).length;
   const declined = categories.filter(category => totals[category].current < totals[category].previous).length;
   summary.innerText = improved || declined ? `${improved} areas improving · ${declined} areas down` : 'Log workouts in both periods to compare volume';
+}
+
+/* =========================================================================
+   REFINED FRONT/BACK BODY HEATMAP
+   ========================================================================= */
+function renderBodyHeatmap() {
+  const container = document.getElementById('bodyHeatmap');
+  const summary = document.getElementById('heatmapSummary');
+  if (!container) return;
+  const categories = ['Shoulders', 'Chest', 'Back', 'Arms', 'Core', 'Glutes', 'Legs', 'Calves'];
+  const categoryByName = Object.fromEntries(appExercises.map(ex => [ex.name.toLowerCase(), ex.category]));
+  const now = Date.now(), currentStart = now - 30 * 86400000, previousStart = now - 60 * 86400000;
+  const totals = Object.fromEntries(categories.map(c => [c, { current: 0, previous: 0 }]));
+  appHistory.forEach(session => {
+    const time = new Date(session.timestamp).getTime();
+    const period = time >= currentStart ? 'current' : (time >= previousStart ? 'previous' : null);
+    if (!period) return;
+    session.exercises.forEach(ex => {
+      const category = categoryByName[ex.name.toLowerCase()];
+      if (totals[category]) totals[category][period] += ex.sets.filter(set => set.completed !== false).length;
+    });
+  });
+  const maxSets = Math.max(1, ...categories.map(c => totals[c].current));
+  const color = c => { const ratio = totals[c].current / maxSets; return ratio > .66 ? '#fb7185' : ratio > .33 ? '#d95b73' : ratio ? '#8f4659' : '#303846'; };
+  const part = (c, shape) => `<${shape} fill="${color(c)}" stroke="#111827" stroke-width="1.4"><title>${escapeHtml(c + ': ' + totals[c].current + ' sets')}</title></${shape}>`;
+  const callout = (c, x, y, side) => `<path d="M${x} ${y} H${side === 'left' ? 150 : 372}" stroke="#536075" stroke-width="1" stroke-dasharray="3 4"/><text x="${side === 'left' ? 12 : 388}" y="${y - 4}" fill="#9aa5b8" font-size="12">${c}</text><text x="${side === 'left' ? 12 : 388}" y="${y + 14}" fill="#f8fafc" font-size="14" font-weight="600">${totals[c].current} Sets</text>`;
+  const figure = (back = false) => { const gluteY = back ? 104 : 139, gluteTop = back ? 98 : 133; return `<g>
+    <circle cx="62" cy="20" r="17" fill="#303846" stroke="#596579" stroke-width="1.5"/>
+    ${part('Shoulders', 'path d="M43 42 Q25 39 10 57 L20 79 L42 68 Z"')}${part('Shoulders', 'path d="M81 42 Q99 39 114 57 L104 79 L82 68 Z"')}
+    ${part(back ? 'Back' : 'Chest', 'path d="M43 43 Q62 35 81 43 L76 103 Q62 113 48 103 Z"')}
+    ${part('Arms', 'path d="M17 58 Q4 79 10 111 L22 119 L34 82 L42 66 Z"')}${part('Arms', 'path d="M107 58 Q120 79 114 111 L102 119 L90 82 L82 66 Z"')}
+    ${!back ? part('Core', 'path d="M48 80 L76 80 L72 137 Q62 144 52 137 Z"') : ''}${part('Glutes', 'path d="M48 ' + gluteY + ' Q62 ' + gluteTop + ' 76 ' + gluteY + ' L74 166 L50 166 Z"')}
+    ${part('Legs', 'path d="M50 166 L61 166 L58 255 L40 255 Z"')}${part('Legs', 'path d="M63 166 L74 166 L84 255 L66 255 Z"')}
+    ${part('Calves', 'path d="M40 256 L58 256 L55 294 L42 294 Z"')}${part('Calves', 'path d="M66 256 L84 256 L82 294 L69 294 Z"')}
+  </g>`; };
+  container.innerHTML = `<div class="overflow-x-auto"><svg viewBox="0 0 520 380" class="w-full min-w-[480px] h-auto" role="img" aria-label="Front and back body heatmap"><defs><linearGradient id="heatmapLegend" x1="0" x2="1"><stop stop-color="#303846"/><stop offset="1" stop-color="#fb7185"/></linearGradient></defs><text x="260" y="18" text-anchor="middle" fill="#64748b" font-size="10" letter-spacing="2">30-DAY TRAINING DISTRIBUTION</text><g transform="translate(198 38)">${figure(false)}<path d="M62 38 V292" stroke="#101827" stroke-width="2"/></g><g transform="translate(274 38)" opacity=".9">${figure(true)}<text x="62" y="316" text-anchor="middle" fill="#64748b" font-size="9" letter-spacing="1.5">FRONT / BACK</text></g>${callout('Shoulders', 198, 76, 'left')}${callout('Chest', 198, 116, 'left')}${callout('Arms', 208, 166, 'left')}${callout('Legs', 198, 246, 'left')}${callout('Back', 350, 112, 'right')}${callout('Core', 270, 164, 'right')}${callout('Glutes', 350, 208, 'right')}${callout('Calves', 350, 282, 'right')}<rect x="195" y="350" width="130" height="5" rx="2.5" fill="url(#heatmapLegend)"/><text x="195" y="371" fill="#64748b" font-size="9">LOW</text><text x="325" y="371" fill="#64748b" font-size="9" text-anchor="end">HIGH</text></svg></div>`;
+  const improved = categories.filter(c => totals[c].current > totals[c].previous).length;
+  const declined = categories.filter(c => totals[c].current < totals[c].previous).length;
+  summary.innerText = improved || declined ? `${improved} areas improving · ${declined} areas down` : 'Log workouts in both periods to compare set volume';
 }
 
 /* =========================================================================
