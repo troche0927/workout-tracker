@@ -68,6 +68,72 @@
     .glass-card { background: linear-gradient(145deg, rgba(24,32,46,.96), rgba(16,22,34,.96)); box-shadow: 0 16px 40px rgba(0,0,0,.18); }
     .drag-handle { cursor: grab; }
     .drag-handle:active { cursor: grabbing; }
+
+    /* Forge redesign: quieter surfaces, sharper hierarchy, electric aqua accent. */
+    :root {
+      --ink: #060a12;
+      --panel: #0d1520;
+      --panel-raised: #111d2a;
+      --line: rgba(148, 163, 184, .14);
+      --muted: #8290a3;
+      --aqua: #21d4c3;
+      --aqua-soft: rgba(33, 212, 195, .14);
+      --coral: #ff8b72;
+    }
+    body {
+      background-color: var(--ink) !important;
+      background-image: radial-gradient(circle at 50% -10%, rgba(33,212,195,.13), transparent 28rem), linear-gradient(180deg, #080d16 0%, #060a12 65%) !important;
+      color: #f8fafc;
+    }
+    body > div {
+      max-width: 540px !important;
+      background: linear-gradient(180deg, #0b121d 0%, #080d15 100%) !important;
+      border-color: var(--line) !important;
+    }
+    .bg-gymCard, .glass-card {
+      background: linear-gradient(145deg, rgba(17,29,42,.98), rgba(11,20,31,.98)) !important;
+      border-color: var(--line) !important;
+      box-shadow: 0 18px 45px rgba(0,0,0,.18) !important;
+    }
+    .border-gymBorder { border-color: var(--line) !important; }
+    .text-blue-400, .text-cyan-400 { color: var(--aqua) !important; }
+    .text-blue-300, .text-cyan-300 { color: #93f5e8 !important; }
+    .text-purple-300, .text-purple-400 { color: #93f5e8 !important; }
+    .bg-blue-500, .bg-cyan-500 { background-color: var(--aqua) !important; }
+    .bg-blue-500\/20, .bg-cyan-500\/20, .bg-purple-500\/20 { background-color: var(--aqua-soft) !important; }
+    .border-blue-500, .border-cyan-500, .border-purple-500 { border-color: var(--aqua) !important; }
+    .border-blue-500\/30, .border-cyan-500\/30, .border-purple-500\/30 { border-color: rgba(33,212,195,.3) !important; }
+    input:focus, select:focus { border-color: var(--aqua) !important; outline-color: var(--aqua) !important; }
+    button { transition: transform .18s ease, background-color .18s ease, border-color .18s ease, color .18s ease; }
+    button:active { transform: scale(.97); }
+    #view-workouts > div:first-child {
+      min-height: 190px;
+      padding: 1.5rem !important;
+      border-color: rgba(33,212,195,.28) !important;
+      background: linear-gradient(145deg, rgba(18,72,78,.8), rgba(11,24,36,.95) 52%, rgba(11,18,29,.98)) !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 22px 50px rgba(0,0,0,.25) !important;
+    }
+    #view-workouts > div:first-child:after {
+      content: '01'; position: absolute; right: 1.5rem; bottom: .7rem; color: rgba(143,245,232,.22); font: 900 5.5rem/1 ui-monospace, monospace; letter-spacing: -.15em;
+    }
+    #view-workouts > div:first-child h2 { max-width: 12rem; font-size: 2.15rem; line-height: .98; letter-spacing: -.055em; }
+    #view-workouts > div:first-child p:last-child { color: #a5b4c4 !important; }
+    #view-workouts h2, #view-progress h3, #view-history h2 { letter-spacing: -.025em; }
+    #templatesList > div, #historyList > div { border-radius: 1.25rem !important; }
+    #activeWorkoutModal { background: #080d15 !important; }
+    #activeWorkoutModal > div:first-child, #activeWorkoutModal > div:last-child { background: rgba(13,21,32,.96) !important; border-color: var(--line) !important; }
+    #activeExercisesContainer > div { border-radius: 1.25rem !important; border-color: var(--line) !important; }
+    #restTimerModal > div { background: linear-gradient(145deg, #122435, #0b1520) !important; border-color: rgba(33,212,195,.28) !important; }
+    #modalTimerDisplay { color: #9af7eb !important; letter-spacing: -.08em; }
+    #headerTimerBadge { background: rgba(18,72,78,.65) !important; border-color: rgba(33,212,195,.4) !important; color: #9af7eb !important; }
+    #activeWorkoutBanner { background: linear-gradient(90deg, #0d8f88, #116575) !important; }
+    nav { background: rgba(7,13,21,.9) !important; border-color: var(--line) !important; }
+    nav .nav-btn { min-width: 4.5rem; }
+    nav .nav-btn.text-blue-400 { background: var(--aqua-soft); }
+    #bodyHeatmap { margin-inline: -.25rem; }
+    #bodyHeatmap svg { filter: drop-shadow(0 16px 26px rgba(0,0,0,.25)); }
+    .heatmap-part { transition: opacity .2s ease, filter .2s ease; }
+    .heatmap-part:hover { opacity: 1; filter: brightness(1.3); }
   </style>
 </head>
 
@@ -126,9 +192,10 @@
       <section id="view-workouts" class="space-y-5">
         <div class="relative overflow-hidden rounded-3xl border border-purple-500/20 bg-gradient-to-br from-purple-500/20 via-slate-900 to-cyan-500/10 p-5 shadow-xl">
           <div class="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-purple-500/15 blur-2xl"></div>
-          <p class="text-[10px] font-bold uppercase tracking-[.22em] text-purple-300">Your training space</p>
-          <h2 class="mt-1 text-2xl font-black tracking-tight text-white">Train with intention.</h2>
-          <p class="mt-1 max-w-[18rem] text-xs leading-relaxed text-slate-300">Build your sequence once, then stay focused set by set.</p>
+          <div class="relative z-10 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.22em] text-purple-300"><span class="h-1.5 w-1.5 rounded-full bg-cyan-400"></span> Your training space</div>
+          <h2 class="relative z-10 mt-3 text-2xl font-black tracking-tight text-white">Train with intention.</h2>
+          <p class="relative z-10 mt-3 max-w-[18rem] text-xs leading-relaxed text-slate-300">Build your sequence once, then stay focused set by set.</p>
+          <div class="relative z-10 mt-6 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400"><i class="ph-bold ph-lightning text-cyan-400"></i> Consistency compounds</div>
         </div>
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Quick Start</h2>
@@ -203,13 +270,13 @@
           <div class="flex items-start justify-between mb-3">
             <div>
               <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <i class="ph-bold ph-person-simple-run text-purple-400"></i> Body Volume Heatmap
+                <i class="ph-bold ph-person-simple-run text-purple-400"></i> Training heatmap
               </h3>
-              <p class="text-[10px] text-slate-500 mt-1">Current 30 days vs. previous 30 days</p>
+              <p class="text-[10px] text-slate-500 mt-1">Where your work is landing over the last 30 days</p>
             </div>
             <div class="flex items-center gap-2 text-[10px] text-slate-400">
-              <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-emerald-500"></i> Up</span>
-              <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-red-500"></i> Down</span>
+              <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-cyan-400"></i> Volume</span>
+              <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-slate-700"></i> Quiet</span>
             </div>
           </div>
           <div id="bodyHeatmap" class="min-h-[300px]"></div>
@@ -279,9 +346,13 @@
     <!-- ================= REST TIMER POPUP MODAL ================= -->
     <div id="restTimerModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
       <div class="bg-gymCard border border-gymBorder w-full max-w-xs rounded-2xl p-5 text-center shadow-2xl space-y-4">
-        <h3 class="text-sm font-bold text-white uppercase tracking-wider">Resting Between Sets</h3>
+        <div>
+          <p class="text-[10px] font-bold uppercase tracking-[.2em] text-cyan-400">Lock-safe timer</p>
+          <h3 class="mt-1 text-sm font-bold text-white uppercase tracking-wider">Rest between sets</h3>
+        </div>
         <div class="relative py-4">
           <span id="modalTimerDisplay" class="text-5xl font-mono font-black text-blue-400 tracking-wider">01:30</span>
+          <p class="mt-2 text-[10px] text-slate-500">The finish time is saved even when your screen is off.</p>
         </div>
         <div class="grid grid-cols-3 gap-2">
           <button onclick="addRestTimerSeconds(15)" class="py-2 bg-slate-800 rounded-lg text-xs font-semibold text-slate-200">+15s</button>
@@ -374,8 +445,8 @@
         <div class="space-y-2">
           <p class="text-slate-400 text-[11px]">Workout logs, templates, and active sessions are stored in IndexedDB, a persistent on-device database. Existing browser data is migrated automatically.</p>
           <div class="p-3 bg-slate-900/80 rounded-xl border border-gymBorder space-y-1">
-            <span class="text-blue-400 font-semibold block">Mobile Installation Tip:</span>
-            <span class="text-slate-300 text-[11px]">Tap the "Share" button in Safari or the menu in Chrome, then select <strong>"Add to Home Screen"</strong> for full-screen native gym use.</span>
+            <span class="text-blue-400 font-semibold block">Screen-off timer:</span>
+            <span class="text-slate-300 text-[11px]">Rest is saved as an end time, so locking your phone will not pause it. Allow notifications when prompted for a completion alert.</span>
           </div>
         </div>
         <div class="space-y-2 pt-2">
@@ -668,6 +739,8 @@ let activeWorkout = null;
 let workoutIntervalId = null;
 let restTimerSecondsRemaining = 0;
 let restTimerIntervalId = null;
+let restTimerEndsAt = 0;
+const REST_TIMER_STORAGE_KEY = 'apex_rest_timer_v1';
 
 // Progress Tracking States
 let progressMode = 'exercise'; // 'exercise' or 'muscle'
@@ -686,7 +759,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   renderHistoryList();
   setupExerciseSelectors();
   await restoreActiveWorkoutIfExists();
+  restoreRestTimer();
 });
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refreshRestTimerFromClock();
+});
+window.addEventListener('pageshow', refreshRestTimerFromClock);
 
 async function initStorage() {
   let storedTemplates = await readStored(STORAGE_KEYS.TEMPLATES);
@@ -2166,6 +2245,147 @@ function confirmCustom(msg) {
 
 function promptCustom(msg) {
   return window.prompt(msg);
+}
+
+/* Timestamp-backed rest timer. The interval only paints the UI; elapsed time is
+   always calculated from the end timestamp so screen-lock/background throttling
+   cannot make the timer pause. */
+function startRestTimer(seconds) {
+  const duration = Math.max(1, parseInt(seconds) || 0);
+  restTimerEndsAt = Date.now() + duration * 1000;
+  restTimerSecondsRemaining = duration;
+  persistRestTimer();
+  if (restTimerIntervalId) clearInterval(restTimerIntervalId);
+  const headerBadge = document.getElementById('headerTimerBadge');
+  headerBadge.classList.remove('hidden');
+  headerBadge.classList.add('flex');
+  updateTimerDisplays();
+  requestRestTimerNotificationPermission();
+  restTimerIntervalId = setInterval(refreshRestTimerFromClock, 250);
+}
+
+function persistRestTimer() {
+  if (!restTimerEndsAt || restTimerSecondsRemaining <= 0) {
+    localStorage.removeItem(REST_TIMER_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(REST_TIMER_STORAGE_KEY, JSON.stringify({ endsAt: restTimerEndsAt }));
+}
+
+function restoreRestTimer() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(REST_TIMER_STORAGE_KEY) || 'null');
+    if (!saved?.endsAt) return;
+    restTimerEndsAt = Number(saved.endsAt);
+    if (restTimerEndsAt > Date.now()) {
+      restTimerSecondsRemaining = Math.ceil((restTimerEndsAt - Date.now()) / 1000);
+      const headerBadge = document.getElementById('headerTimerBadge');
+      headerBadge.classList.remove('hidden');
+      headerBadge.classList.add('flex');
+      updateTimerDisplays();
+      restTimerIntervalId = setInterval(refreshRestTimerFromClock, 250);
+    } else {
+      finishRestTimer(false);
+    }
+  } catch (e) {
+    localStorage.removeItem(REST_TIMER_STORAGE_KEY);
+  }
+}
+
+function refreshRestTimerFromClock() {
+  if (!restTimerEndsAt) return;
+  restTimerSecondsRemaining = Math.max(0, Math.ceil((restTimerEndsAt - Date.now()) / 1000));
+  updateTimerDisplays();
+  if (restTimerSecondsRemaining <= 0) finishRestTimer(true);
+}
+
+function finishRestTimer(announce = true) {
+  if (restTimerIntervalId) clearInterval(restTimerIntervalId);
+  restTimerIntervalId = null;
+  restTimerEndsAt = 0;
+  restTimerSecondsRemaining = 0;
+  localStorage.removeItem(REST_TIMER_STORAGE_KEY);
+  updateTimerDisplays();
+  const headerBadge = document.getElementById('headerTimerBadge');
+  headerBadge.classList.add('hidden');
+  headerBadge.classList.remove('flex');
+  if (announce) {
+    playRestChime();
+    showToast('Rest time is up! Time for the next set.');
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try { new Notification('Rest complete', { body: 'Time for your next set.', tag: 'apex-rest-timer' }); } catch (e) {}
+    }
+  }
+}
+
+function addRestTimerSeconds(sec) {
+  if (!restTimerEndsAt) return;
+  restTimerEndsAt = Math.max(restTimerEndsAt, Date.now()) + (parseInt(sec) || 0) * 1000;
+  restTimerSecondsRemaining = Math.ceil((restTimerEndsAt - Date.now()) / 1000);
+  persistRestTimer();
+  updateTimerDisplays();
+}
+
+function stopRestTimer() {
+  finishRestTimer(false);
+  hideRestTimerModal();
+}
+
+function requestRestTimerNotificationPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    try { Notification.requestPermission().catch(() => {}); } catch (e) {}
+  }
+}
+
+/* Refined body map: two compact athletic silhouettes with restrained cyan heat. */
+function renderBodyHeatmap() {
+  const container = document.getElementById('bodyHeatmap');
+  const summary = document.getElementById('heatmapSummary');
+  if (!container) return;
+  const categories = ['Shoulders', 'Chest', 'Back', 'Arms', 'Core', 'Glutes', 'Legs', 'Calves'];
+  const categoryByName = Object.fromEntries(appExercises.map(ex => [ex.name.toLowerCase(), ex.category]));
+  const now = Date.now(), currentStart = now - 30 * 86400000, previousStart = now - 60 * 86400000;
+  const totals = Object.fromEntries(categories.map(c => [c, { current: 0, previous: 0 }]));
+  appHistory.forEach(session => {
+    const time = new Date(session.timestamp).getTime();
+    const period = time >= currentStart ? 'current' : (time >= previousStart ? 'previous' : null);
+    if (!period) return;
+    session.exercises.forEach(ex => {
+      const category = categoryByName[ex.name.toLowerCase()];
+      if (totals[category]) totals[category][period] += ex.sets.filter(set => set.completed !== false).length;
+    });
+  });
+  const maxSets = Math.max(1, ...categories.map(c => totals[c].current));
+  const color = c => {
+    const ratio = totals[c].current / maxSets;
+    if (!totals[c].current) return '#162333';
+    if (ratio > .72) return '#2bdac8';
+    if (ratio > .42) return '#159e9d';
+    return '#12636d';
+  };
+  const titleFor = c => {
+    const previous = totals[c].previous;
+    const change = previous ? Math.round(((totals[c].current - previous) / previous) * 100) : (totals[c].current ? 100 : 0);
+    return `${c}: ${totals[c].current} sets (${change >= 0 ? '+' : ''}${change}% vs prior period)`;
+  };
+  const part = (c, d) => `<path class="heatmap-part" d="${d}" fill="${color(c)}" stroke="#07131c" stroke-width="2.2" stroke-linejoin="round"><title>${escapeHtml(titleFor(c))}</title></path>`;
+  const figure = (back = false) => `<g>
+    <path d="M51 5 Q62 0 73 5 L77 15 Q76 28 62 32 Q48 28 47 15 Z" fill="#162333" stroke="#07131c" stroke-width="2"/>
+    <path d="M54 29 L70 29 L73 43 L51 43 Z" fill="#12636d" stroke="#07131c" stroke-width="2"/>
+    ${part('Shoulders', 'M51 39 Q35 34 18 47 L23 68 L48 59 Z')}${part('Shoulders', 'M73 39 Q89 34 106 47 L101 68 L76 59 Z')}
+    ${part(back ? 'Back' : 'Chest', back ? 'M51 40 Q62 34 73 40 L79 94 L69 112 L55 112 L45 94 Z' : 'M49 40 Q62 35 75 40 L73 65 L62 72 L51 65 Z')}
+    ${part('Arms', 'M20 47 L9 65 L2 96 L11 101 L27 72 L35 53 Z')}${part('Arms', 'M104 47 L115 65 L122 96 L113 101 L97 72 L89 53 Z')}
+    ${part('Arms', 'M3 96 L11 101 L7 126 L0 122 Z')}${part('Arms', 'M121 96 L113 101 L117 126 L124 122 Z')}
+    ${!back ? part('Core', 'M51 65 L73 65 L76 112 L68 132 L56 132 L48 112 Z') : ''}
+    ${part('Glutes', back ? 'M48 108 Q62 101 76 108 L74 139 L62 147 L50 139 Z' : 'M50 131 L74 131 L75 154 L62 161 L49 154 Z')}
+    ${part('Legs', 'M50 151 L61 157 L58 230 L42 230 L39 187 Z')}${part('Legs', 'M63 157 L74 151 L85 187 L82 230 L66 230 Z')}
+    ${part('Calves', 'M42 229 L58 229 L55 271 L45 276 L39 268 Z')}${part('Calves', 'M66 229 L82 229 L85 268 L79 276 L69 271 Z')}
+    <path d="M45 276 L55 271 L54 282 L42 282 Z" fill="#162333" stroke="#07131c" stroke-width="2"/><path d="M69 271 L79 276 L82 282 L70 282 Z" fill="#162333" stroke="#07131c" stroke-width="2"/>
+  </g>`;
+  container.innerHTML = `<div class="flex justify-center"><svg viewBox="0 0 340 335" class="w-full max-w-[360px] h-auto" role="img" aria-label="Front and back body training heatmap"><defs><linearGradient id="heatmapLegend" x1="0" x2="1"><stop stop-color="#162333"/><stop offset=".52" stop-color="#12636d"/><stop offset="1" stop-color="#2bdac8"/></linearGradient></defs><text x="92" y="14" text-anchor="middle" fill="#8da0b5" font-size="9" font-weight="700" letter-spacing="2">FRONT</text><text x="248" y="14" text-anchor="middle" fill="#8da0b5" font-size="9" font-weight="700" letter-spacing="2">BACK</text><g transform="translate(30 27)">${figure(false)}</g><g transform="translate(186 27)" opacity=".94">${figure(true)}</g><rect x="112" y="318" width="116" height="5" rx="2.5" fill="url(#heatmapLegend)"/><text x="112" y="333" fill="#718196" font-size="8">QUIET</text><text x="228" y="333" fill="#718196" font-size="8" text-anchor="end">MOST TRAINED</text></svg></div>`;
+  const improved = categories.filter(c => totals[c].current > totals[c].previous).length;
+  const declined = categories.filter(c => totals[c].current < totals[c].previous).length;
+  summary.innerText = improved || declined ? `${improved} areas up · ${declined} areas down vs. the prior 30 days` : 'Log workouts to see your training distribution';
 }
 
 function formatSeconds(totalSeconds) {
