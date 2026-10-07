@@ -45,6 +45,7 @@
       -webkit-tap-highlight-color: transparent;
       user-select: none;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-image: radial-gradient(circle at 15% 0%, rgba(168,85,247,.12), transparent 30rem), radial-gradient(circle at 100% 25%, rgba(6,182,212,.08), transparent 24rem);
     }
     input, textarea {
       user-select: auto;
@@ -64,6 +65,9 @@
     .timer-active {
       animation: pulse-ring 2s infinite ease-in-out;
     }
+    .glass-card { background: linear-gradient(145deg, rgba(24,32,46,.96), rgba(16,22,34,.96)); box-shadow: 0 16px 40px rgba(0,0,0,.18); }
+    .drag-handle { cursor: grab; }
+    .drag-handle:active { cursor: grabbing; }
   </style>
 </head>
 
@@ -120,6 +124,12 @@
     <main class="flex-1 px-4 py-4 overflow-y-auto no-scrollbar">
       <!-- VIEW 1: WORKOUTS & TEMPLATES -->
       <section id="view-workouts" class="space-y-5">
+        <div class="relative overflow-hidden rounded-3xl border border-purple-500/20 bg-gradient-to-br from-purple-500/20 via-slate-900 to-cyan-500/10 p-5 shadow-xl">
+          <div class="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-purple-500/15 blur-2xl"></div>
+          <p class="text-[10px] font-bold uppercase tracking-[.22em] text-purple-300">Your training space</p>
+          <h2 class="mt-1 text-2xl font-black tracking-tight text-white">Train with intention.</h2>
+          <p class="mt-1 max-w-[18rem] text-xs leading-relaxed text-slate-300">Build your sequence once, then stay focused set by set.</p>
+        </div>
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Quick Start</h2>
           <button onclick="startEmptyWorkout()" class="text-xs text-blue-400 font-semibold hover:underline flex items-center gap-1">
@@ -337,8 +347,11 @@
           </div>
 
           <div>
-            <label class="text-[11px] font-semibold text-slate-400 block mb-1">Select Exercises & Rest</label>
-            <div id="templateExerciseChecklist" class="max-h-56 overflow-y-auto space-y-1.5 p-2 bg-[#0a0f16] rounded-xl border border-gymBorder text-xs"></div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-[11px] font-semibold text-slate-400">Workout sequence</label>
+              <span class="text-[10px] text-slate-500">Use ↑ ↓ to reorder</span>
+            </div>
+            <div id="templateExerciseChecklist" class="max-h-[28rem] overflow-y-auto space-y-2 p-2 bg-[#0a0f16] rounded-xl border border-gymBorder text-xs"></div>
           </div>
         </div>
 
@@ -662,6 +675,7 @@ let progressionChartInstance = null;
 let currentChartMetric = 'weight'; 
 let selectedExerciseCategory = 'All';
 let editingTemplateId = null;
+let templateBuilderDraft = {};
 
 /* =========================================================================
    BOOTSTRAP & LOCAL STORAGE INITIALIZATION
@@ -899,7 +913,7 @@ function renderTemplatesList() {
     const previewList = t.exercises.map(e => e.name).slice(0, 3).join(', ');
     const extraCount = t.exercises.length > 3 ? ` +${t.exercises.length - 3} more` : '';
     return `
-      <div class="bg-gymCard border border-gymBorder rounded-2xl p-4 shadow-sm hover:border-slate-600 transition-all flex flex-col justify-between space-y-3">
+      <div class="glass-card border border-gymBorder rounded-2xl p-4 shadow-sm hover:border-purple-500/40 transition-all flex flex-col justify-between space-y-3">
         <div>
           <div class="flex items-center justify-between">
             <h3 class="font-bold text-sm text-white">${escapeHtml(t.name)}</h3>
@@ -933,39 +947,40 @@ function openEditTemplateModal(templateId) {
 
 function openTemplateModal(templateId) {
   editingTemplateId = templateId;
+  templateBuilderDraft = {};
   const template = templateId ? appTemplates.find(t => t.id === templateId) : null;
   const checklist = document.getElementById('templateExerciseChecklist');
-  checklist.innerHTML = appExercises.map(e => `
-    <div class="flex flex-col gap-1 p-2 rounded-lg bg-[#0a0f16] border border-gymBorder mb-1">
-      <label class="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" value="${e.id}" data-name="${escapeHtml(e.name)}" class="tmpl-checkbox rounded border-gymBorder text-blue-500 focus:ring-0 bg-slate-900" onchange="document.getElementById('tmpl_details_${e.id}').classList.toggle('hidden', !this.checked)" />
-        <span class="text-slate-200 text-xs">${escapeHtml(e.name)}</span>
-        <span class="text-[10px] text-slate-500 ml-auto">(${e.category})</span>
-      </label>
-      <div id="tmpl_details_${e.id}" class="hidden flex gap-4 mt-1 pl-6">
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] text-slate-400">Sets:</span>
-          <input type="number" id="tmpl_sets_${e.id}" value="3" min="1" class="w-10 bg-slate-800 border border-gymBorder text-white text-[11px] text-center rounded outline-none focus:border-blue-500">
-        </div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] text-slate-400">Rest (sec):</span>
-          <input type="number" id="tmpl_rest_${e.id}" value="90" min="0" step="5" class="w-12 bg-slate-800 border border-gymBorder text-white text-[11px] text-center rounded outline-none focus:border-blue-500">
-        </div>
+  const ordered = template ? template.exercises.map(x => appExercises.find(e => e.id === x.exerciseId)).filter(Boolean) : [];
+  const available = appExercises.filter(e => !ordered.some(selected => selected.id === e.id));
+  const renderRow = (e, selected, index) => {
+    const saved = template?.exercises.find(x => x.exerciseId === e.id) || {};
+    const substituteOptions = appExercises.filter(candidate => candidate.id !== e.id).map(candidate => `<option value="${candidate.id}" ${(saved.substitutions || []).includes(candidate.id) ? 'selected' : ''}>${escapeHtml(candidate.name)}</option>`).join('');
+    return `<div class="tmpl-row ${selected ? 'border-purple-500/50 bg-purple-500/[.07]' : 'border-gymBorder bg-slate-950/40'} rounded-xl border p-2.5" data-id="${e.id}">
+      <div class="flex items-center gap-2">
+        ${selected ? `<div class="drag-handle text-slate-600"><i class="ph-bold ph-dots-six-vertical"></i></div>` : ''}
+        ${selected ? `<span class="w-6 h-6 rounded-lg bg-purple-500/20 text-purple-300 flex items-center justify-center text-[10px] font-bold">${index + 1}</span>` : `<input type="checkbox" value="${e.id}" data-name="${escapeHtml(e.name)}" class="tmpl-checkbox rounded border-gymBorder text-purple-500 focus:ring-0 bg-slate-900" onchange="toggleTemplateExercise('${e.id}')" />`}
+        <span class="text-slate-100 text-xs font-semibold truncate">${escapeHtml(e.name)}</span>
+        <span class="text-[10px] text-slate-500 ml-auto">${escapeHtml(e.category)}</span>
+        ${selected ? `<button onclick="moveTemplateExercise('${e.id}', -1)" class="p-1 text-slate-500 hover:text-purple-300" title="Move up"><i class="ph-bold ph-arrow-up"></i></button><button onclick="moveTemplateExercise('${e.id}', 1)" class="p-1 text-slate-500 hover:text-purple-300" title="Move down"><i class="ph-bold ph-arrow-down"></i></button><button onclick="toggleTemplateExercise('${e.id}')" class="p-1 text-slate-500 hover:text-red-300" title="Remove"><i class="ph-bold ph-x"></i></button>` : ''}
       </div>
-    </div>
-  `).join('');
+      ${selected ? `<div class="mt-2 pl-8 space-y-2">
+        <div class="flex gap-3">
+          <label class="flex items-center gap-1.5 text-[10px] text-slate-400">Sets <input type="number" id="tmpl_sets_${e.id}" value="${saved.defaultSets || 3}" min="1" class="w-10 bg-slate-800 border border-gymBorder text-white text-[11px] text-center rounded-lg py-1 outline-none focus:border-purple-500"></label>
+          <label class="flex items-center gap-1.5 text-[10px] text-slate-400">Rest <input type="number" id="tmpl_rest_${e.id}" value="${saved.restSeconds || 90}" min="0" step="5" class="w-12 bg-slate-800 border border-gymBorder text-white text-[11px] text-center rounded-lg py-1 outline-none focus:border-purple-500"><span>s</span></label>
+        </div>
+        <label class="block text-[10px] text-slate-400">Substitutions <span class="text-slate-600">(Ctrl/Cmd-click to select multiple)</span></label>
+        <select id="tmpl_subs_${e.id}" multiple class="w-full h-16 bg-slate-900 border border-gymBorder text-slate-200 text-[11px] rounded-lg p-1 outline-none focus:border-purple-500">${substituteOptions}</select>
+      </div>` : ''}
+    </div>`;
+  };
+  checklist.innerHTML = `${ordered.length ? `<div class="text-[10px] font-bold uppercase tracking-wider text-purple-300 px-1">In this template</div>${ordered.map((e, i) => renderRow(e, true, i)).join('')}` : '<div class="text-[11px] text-slate-500 text-center py-3">Select exercises below to build your sequence.</div>'}<div class="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-1 pt-2">Add exercises</div>${available.map(e => renderRow(e, false, 0)).join('')}`;
 
   if (template) {
     document.getElementById('templateModalTitle').innerText = 'Edit Workout Template';
     document.getElementById('templateSaveButton').innerText = 'Save Changes';
     document.getElementById('newTemplateName').value = template.name;
     template.exercises.forEach(exercise => {
-      const checkbox = document.querySelector(`.tmpl-checkbox[value="${exercise.exerciseId}"]`);
-      if (!checkbox) return;
-      checkbox.checked = true;
-      document.getElementById(`tmpl_details_${exercise.exerciseId}`).classList.remove('hidden');
-      document.getElementById(`tmpl_sets_${exercise.exerciseId}`).value = exercise.defaultSets || 3;
-      document.getElementById(`tmpl_rest_${exercise.exerciseId}`).value = exercise.restSeconds || 90;
+      // Selected exercises are rendered above; legacy templates remain in their saved order.
     });
   } else {
     document.getElementById('templateModalTitle').innerText = 'Create Workout Template';
@@ -974,6 +989,47 @@ function openTemplateModal(templateId) {
   }
   document.getElementById('templateModal').classList.remove('hidden');
   document.getElementById('templateModal').classList.add('flex');
+}
+
+function getTemplateSelectedIds() {
+  return [...document.querySelectorAll('#templateExerciseChecklist .tmpl-row')].map(row => row.dataset.id).filter(id => {
+    const setsEl = document.getElementById(`tmpl_sets_${id}`);
+    if (!setsEl) return false;
+    templateBuilderDraft[id] = {
+      defaultSets: parseInt(setsEl.value) || 3,
+      restSeconds: parseInt(document.getElementById(`tmpl_rest_${id}`)?.value) || 90,
+      substitutions: [...(document.getElementById(`tmpl_subs_${id}`)?.selectedOptions || [])].map(option => option.value)
+    };
+    return true;
+  });
+}
+
+function toggleTemplateExercise(exerciseId) {
+  const ids = getTemplateSelectedIds();
+  if (ids.includes(exerciseId)) ids.splice(ids.indexOf(exerciseId), 1);
+  else ids.push(exerciseId);
+  renderTemplateBuilder(ids);
+}
+
+function moveTemplateExercise(exerciseId, direction) {
+  const ids = getTemplateSelectedIds();
+  const index = ids.indexOf(exerciseId);
+  const next = index + direction;
+  if (index < 0 || next < 0 || next >= ids.length) return;
+  [ids[index], ids[next]] = [ids[next], ids[index]];
+  renderTemplateBuilder(ids);
+}
+
+function renderTemplateBuilder(selectedIds) {
+  const template = editingTemplateId ? appTemplates.find(t => t.id === editingTemplateId) : null;
+  const checklist = document.getElementById('templateExerciseChecklist');
+  const ordered = selectedIds.map(id => appExercises.find(e => e.id === id)).filter(Boolean);
+  const available = appExercises.filter(e => !selectedIds.includes(e.id));
+  const renderRow = (e, selected, index) => {
+    const saved = templateBuilderDraft[e.id] || template?.exercises.find(x => x.exerciseId === e.id) || {};
+    return `<div class="tmpl-row ${selected ? 'border-purple-500/50 bg-purple-500/[.07]' : 'border-gymBorder bg-slate-950/40'} rounded-xl border p-2.5" data-id="${e.id}"><div class="flex items-center gap-2">${selected ? `<div class="text-slate-600"><i class="ph-bold ph-dots-six-vertical"></i></div><span class="w-6 h-6 rounded-lg bg-purple-500/20 text-purple-300 flex items-center justify-center text-[10px] font-bold">${index + 1}</span>` : `<input type="checkbox" class="rounded border-gymBorder text-purple-500" onchange="toggleTemplateExercise('${e.id}')" />`}<span class="text-slate-100 text-xs font-semibold truncate">${escapeHtml(e.name)}</span><span class="text-[10px] text-slate-500 ml-auto">${escapeHtml(e.category)}</span>${selected ? `<button onclick="moveTemplateExercise('${e.id}', -1)" class="p-1 text-slate-500 hover:text-purple-300"><i class="ph-bold ph-arrow-up"></i></button><button onclick="moveTemplateExercise('${e.id}', 1)" class="p-1 text-slate-500 hover:text-purple-300"><i class="ph-bold ph-arrow-down"></i></button><button onclick="toggleTemplateExercise('${e.id}')" class="p-1 text-slate-500 hover:text-red-300"><i class="ph-bold ph-x"></i></button>` : ''}</div>${selected ? `<div class="mt-2 pl-8 space-y-2"><div class="flex gap-3"><label class="flex items-center gap-1.5 text-[10px] text-slate-400">Sets <input type="number" id="tmpl_sets_${e.id}" value="${saved.defaultSets || 3}" min="1" class="w-10 bg-slate-800 border border-gymBorder text-white text-[11px] text-center rounded-lg py-1"></label><label class="flex items-center gap-1.5 text-[10px] text-slate-400">Rest <input type="number" id="tmpl_rest_${e.id}" value="${saved.restSeconds || 90}" min="0" step="5" class="w-12 bg-slate-800 border border-gymBorder text-white text-[11px] text-center rounded-lg py-1"><span>s</span></label></div><label class="block text-[10px] text-slate-400">Substitutions <span class="text-slate-600">(Ctrl/Cmd-click for multiple)</span></label><select id="tmpl_subs_${e.id}" multiple class="w-full h-16 bg-slate-900 border border-gymBorder text-slate-200 text-[11px] rounded-lg p-1">${appExercises.filter(candidate => candidate.id !== e.id).map(candidate => `<option value="${candidate.id}" ${(saved.substitutions || []).includes(candidate.id) ? 'selected' : ''}>${escapeHtml(candidate.name)}</option>`).join('')}</select></div>` : ''}</div>`;
+  };
+  checklist.innerHTML = `${ordered.length ? `<div class="text-[10px] font-bold uppercase tracking-wider text-purple-300 px-1">In this template</div>${ordered.map((e, i) => renderRow(e, true, i)).join('')}` : '<div class="text-[11px] text-slate-500 text-center py-3">Select exercises below to build your sequence.</div>'}<div class="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-1 pt-2">Add exercises</div>${available.map(e => renderRow(e, false, 0)).join('')}`;
 }
 
 function closeTemplateModal() {
@@ -992,9 +1048,9 @@ function saveTemplate() {
   }
 
   const exercises = [];
-  document.querySelectorAll('.tmpl-checkbox:checked').forEach(c => {
-    const id = c.value;
-    const exName = c.dataset.name;
+  getTemplateSelectedIds().forEach(id => {
+    const ex = appExercises.find(item => item.id === id);
+    const exName = ex ? ex.name : id;
     const sets = parseInt(document.getElementById(`tmpl_sets_${id}`).value) || 3;
     const rest = parseInt(document.getElementById(`tmpl_rest_${id}`).value) || 90;
     
@@ -1002,7 +1058,8 @@ function saveTemplate() {
       exerciseId: id,
       name: exName,
       defaultSets: sets,
-      restSeconds: rest
+      restSeconds: rest,
+      substitutions: [...(document.getElementById(`tmpl_subs_${id}`)?.selectedOptions || [])].map(option => option.value)
     });
   });
 
@@ -1025,6 +1082,7 @@ function saveTemplate() {
       exercises: exercises
     });
   }
+  templateBuilderDraft = {};
   saveTemplatesToStorage();
   renderTemplatesList();
   closeTemplateModal();
@@ -1073,6 +1131,7 @@ function startWorkoutFromTemplate(templateId) {
       exerciseId: e.exerciseId,
       name: e.name,
       restSeconds: e.restSeconds || 90,
+      substitutions: e.substitutions || [],
       sets: sets
     };
   });
@@ -1265,10 +1324,11 @@ function renderActiveWorkoutUI() {
       <div class="bg-gymCard border border-gymBorder rounded-2xl p-3.5 space-y-2.5">
         <div class="flex items-center justify-between">
           <h4 class="text-sm font-bold text-white flex items-center gap-1.5 truncate pr-2">
-            <span class="w-2 h-2 rounded-full bg-blue-400 shrink-0"></span>
+            <span class="w-2 h-2 rounded-full bg-purple-400 shrink-0"></span>
             <span class="truncate">${escapeHtml(ex.name)}</span>
           </h4>
-          <div class="flex items-center gap-3 shrink-0">
+          <div class="flex items-center gap-2 shrink-0">
+            ${ex.substitutions?.length ? `<select onchange="swapActiveExercise(${exIndex}, this.value)" class="max-w-[7rem] bg-slate-900 border border-gymBorder text-[10px] text-purple-300 rounded-lg py-1 px-1"><option value="">Swap exercise</option>${ex.substitutions.map(id => { const sub = appExercises.find(item => item.id === id); return sub ? `<option value="${sub.id}">${escapeHtml(sub.name)}</option>` : ''; }).join('')}</select>` : ''}
             <div class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#0a0f16] border border-gymBorder">
               <i class="ph-bold ph-timer text-[10px] text-slate-500"></i>
               <input type="number" value="${ex.restSeconds || 90}" onchange="updateExerciseRest(${exIndex}, this.value)" class="w-8 bg-transparent text-blue-400 font-mono text-[10px] text-center outline-none" />
@@ -1383,6 +1443,19 @@ function removeExerciseFromActive(exIdx) {
   activeWorkout.exercises.splice(exIdx, 1);
   saveActiveWorkoutToStorage();
   renderActiveWorkoutUI();
+}
+
+function swapActiveExercise(exIdx, exerciseId) {
+  if (!activeWorkout || !exerciseId || !activeWorkout.exercises[exIdx]) return;
+  const replacement = appExercises.find(e => e.id === exerciseId);
+  if (!replacement) return;
+  const current = activeWorkout.exercises[exIdx];
+  current.exerciseId = replacement.id;
+  current.name = replacement.name;
+  current.substitutions = (current.substitutions || []).filter(id => id !== replacement.id);
+  saveActiveWorkoutToStorage();
+  renderActiveWorkoutUI();
+  showToast(`Swapped to ${replacement.name}`);
 }
 
 /* =========================================================================
